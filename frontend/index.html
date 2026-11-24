@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ลงทะเบียนอบรม | E-Training</title>
+<meta name="description" content="ลงทะเบียนอบรมหลักสูตรผู้ควบคุมการขายวัตถุอันตรายทางการเกษตร">
+<meta name="theme-color" content="#49378a">
+<link rel="icon" href="/assets/images/leaf.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/vendor/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/assets/css/base.css">
+<link rel="stylesheet" href="/assets/css/public.css">
+</head>
+<body class="public">
+<div class="topbar" id="topbar"></div>
+<main class="sheet">
+  <div id="announce"></div>
+  <div class="brand">
+    <!-- TODO: แทนที่ด้วยไฟล์โลโก้ทางการ -->
+    <img class="logos" src="/assets/images/logos-temp.png" width="212" height="72" alt="กรมวิชาการเกษตร และ CO-OP Cyber Brain Foundation 2013">
+    <h1>E-Training <img src="/assets/images/leaf.svg" alt=""></h1>
+    <p class="sub">ระบบการอบรมออนไลน์</p>
+    <p class="course">หลักสูตรผู้ควบคุมการขายวัตถุอันตรายทางการเกษตร</p>
+    <img class="shop-art" id="shopArt" src="/assets/images/scene-shop.svg" alt="" data-depth="14" hidden>
+  </div>
+
+  <form id="form" novalidate autocomplete="on">
+    <section class="step" id="step1" aria-label="หน้าที่ 1 จาก 2">
+      <div class="ribbon"><i class="bi bi-pencil-square"></i><span>แบบฟอร์มลงทะเบียนเข้ารับการอบรม</span></div>
+      <div id="lineCta"></div>
+      <section class="card" data-card><header><b>1</b><h2 style="font:inherit">ข้อมูลการสมัครเข้ารับการอบรม</h2></header><div class="rows">
+        <div class="row" data-field="universityId"><i class="bi bi-bank2 ico"></i><label for="universityId">1. มหาวิทยาลัยที่ท่านประสงค์จะเข้ารับการอบรมเพื่อเสริมความรู้ <span class="req">*</span></label><div class="ctl"><select id="universityId" name="universityId" required><option value="">กำลังโหลด…</option></select></div></div>
+        <div class="row" data-field="sessionId"><i class="bi bi-calendar2-week-fill ico"></i><label for="sessionId">2. รุ่นและช่วงเวลาที่ท่านประสงค์จะเข้ารับการอบรม <span class="req">*</span></label><div class="ctl"><select id="sessionId" name="sessionId" required disabled><option value="">กรุณาเลือกรุ่นและช่วงเวลา</option></select><div id="seat"></div></div></div>
+      </div></section>
+      <section class="card" data-card><header><b>2</b><h2 style="font:inherit">ข้อมูลส่วนบุคคล</h2></header><div class="rows">
+        <div class="row" data-field="fullName"><i class="bi bi-person-fill ico"></i><label for="fullName">3. ชื่อ-นามสกุล <span class="req">*</span></label><div class="ctl"><input type="text" id="fullName" name="fullName" maxlength="200" autocomplete="name" required></div></div>
+        <div class="row" data-field="nationalId"><i class="bi bi-person-vcard-fill ico"></i><span class="lbl" id="nidLabel">4. เลขประจำตัวประชาชน 13 หลัก <span class="req">*</span></span><div class="ctl"><div class="nid" id="nid" role="group" aria-labelledby="nidLabel"></div></div></div>
+        <div class="row" data-field="address"><i class="bi bi-house-fill ico"></i><label for="address">5. ที่อยู่ปัจจุบันที่สามารถติดต่อได้ <span class="req">*</span><br><small>(พร้อมรหัสไปรษณีย์)</small></label><div class="ctl"><textarea id="address" name="address" maxlength="500" autocomplete="street-address" required></textarea></div></div>
+        <div class="row" data-field="mobile"><i class="bi bi-telephone-fill ico"></i><label for="mobile">6. หมายเลขโทรศัพท์มือถือ <span class="req">*</span></label><div class="ctl"><input type="tel" id="mobile" name="mobile" maxlength="14" inputmode="tel" autocomplete="tel-national" required></div></div>
+        <div class="row" data-field="lineContactId"><i class="bi bi-line ico"></i><label for="lineContactId">7. LINE ID</label><div class="ctl"><input type="text" id="lineContactId" name="lineContactId" maxlength="100" autocapitalize="none" autocomplete="off"></div></div>
+        <div class="row" data-field="email"><i class="bi bi-envelope-fill ico"></i><label for="email">8. อีเมล (E-mail) <span class="req">*</span></label><div class="ctl"><input type="email" id="email" name="email" maxlength="200" autocomplete="email" required></div></div>
+      </div></section>
+      <div class="actions"><button class="pager" type="button" id="next">หน้าที่ 1 จาก 2 <i class="bi bi-chevron-right"></i><span class="sr">ไปหน้าถัดไป</span></button></div>
+      <div class="scene"><img src="/assets/images/scene-student.svg" width="1000" height="400" alt="" data-depth="12"></div>
+    </section>
+
+    <section class="step" id="step2" aria-label="หน้าที่ 2 จาก 2" hidden>
+      <section class="card" data-card><header><b>3</b><h2 style="font:inherit">ข้อมูลร้านค้า</h2></header><div class="rows">
+        <div class="row" data-field="shopName"><i class="bi bi-shop ico"></i><label for="shopName">9. ชื่อร้านค้า <span class="req">*</span></label><div class="ctl"><input type="text" id="shopName" name="shopName" maxlength="200" autocomplete="organization" required></div></div>
+        <div class="row" data-field="shopAddress"><i class="bi bi-geo-alt-fill ico"></i><label for="shopAddress">10. สถานที่ตั้งร้านค้า <span class="req">*</span><br><small>(ระบุที่อยู่และจังหวัด)</small></label><div class="ctl"><textarea id="shopAddress" name="shopAddress" maxlength="500" required></textarea></div></div>
+        <div class="row" data-field="shopDurationId"><i class="bi bi-calendar3 ico"></i><label for="shopDurationId">11. ระยะเวลาในการเปิดร้าน <span class="req">*</span></label><div class="ctl"><select id="shopDurationId" name="shopDurationId" required><option value="">กรุณาเลือก</option></select></div></div>
+        <div class="row" data-field="hasTrainedBefore"><i class="bi bi-mortarboard-fill ico"></i><span class="lbl" id="trLabel">12. เคยผ่านการอบรมหลักสูตรนี้หรือไม่ <span class="req">*</span></span><div class="ctl radios" role="radiogroup" aria-labelledby="trLabel"><label><input type="radio" name="hasTrainedBefore" value="yes"> เคย</label><label><input type="radio" name="hasTrainedBefore" value="no"> ไม่เคย</label></div></div>
+      </div></section>
+      <section class="card" data-card><header><b>4</b><h2 style="font:inherit">เอกสารประกอบการสมัคร</h2><small>(อัปโหลดไฟล์ภาพ/เอกสาร: JPG, PNG หรือ PDF)</small></header><div class="docs" id="docs"></div><div class="pay" id="pay" hidden><i class="bi bi-wallet2"></i><span></span></div></section>
+      <section class="card" data-card><header><b>5</b><h2 style="font:inherit">ข้อมูลสำหรับออกใบเสร็จรับเงิน</h2></header>
+        <div class="same"><button type="button" class="btn btn-sm" id="same"><i class="bi bi-copy"></i> ใช้ชื่อและที่อยู่เดียวกับผู้สมัคร</button></div>
+        <div class="rows">
+        <div class="row" data-field="receiptName"><i class="bi bi-file-earmark-text-fill ico"></i><label for="receiptName">17. ชื่อ-นามสกุล หรือชื่อหน่วยงาน <span class="req">*</span></label><div class="ctl"><input type="text" id="receiptName" name="receiptName" maxlength="200" required></div></div>
+        <div class="row" data-field="receiptAddress"><i class="bi bi-house-fill ico"></i><label for="receiptAddress">18. ที่อยู่สำหรับออกใบเสร็จรับเงิน <span class="req">*</span><br><small>(พร้อมรหัสไปรษณีย์)</small></label><div class="ctl"><textarea id="receiptAddress" name="receiptAddress" maxlength="500" required></textarea></div></div>
+        <div class="row" data-field="taxId"><i class="bi bi-receipt ico"></i><label for="taxId">19. เลขประจำตัวผู้เสียภาษี (ถ้ามี)</label><div class="ctl"><input type="text" id="taxId" name="taxId" maxlength="20" inputmode="numeric" autocomplete="off"></div></div>
+      </div></section>
+      <label class="consent"><input type="checkbox" id="acknowledge"><span>ข้าพเจ้าได้อ่านและรับทราบ<a href="/privacy.html" target="_blank" rel="noopener">ประกาศความเป็นส่วนตัว</a> และตกลงตาม<a href="/policy.html" target="_blank" rel="noopener">เงื่อนไขการใช้งาน</a> <span class="req">*</span></span></label>
+      <label class="consent opt"><input type="checkbox" id="sensitiveConsent"><span><strong>ความยินยอมข้อมูลอ่อนไหว (ไม่บังคับ)</strong><br>หากภาพบัตรประชาชนแสดงข้อมูลศาสนาหรือหมู่โลหิตที่ข้าพเจ้าไม่ได้ปิดทับ ข้าพเจ้ายินยอมโดยชัดแจ้งให้เก็บรักษาข้อมูลนั้นไว้ในภาพเอกสารเพื่อยืนยันตัวตนเท่านั้น ถอนได้ทุกเมื่อที่หน้าติดตามสถานะ ไม่ยินยอมก็สมัครได้ โดยปิดทับข้อมูลดังกล่าวก่อนถ่าย</span></label>
+      <div class="actions"><button class="pager back" type="button" id="back"><i class="bi bi-chevron-left"></i> กลับหน้าที่ 1</button><button class="btn btn-green submit" type="submit" id="submit"><span class="bar"></span><span class="txt">ส่งข้อมูลลงทะเบียน</span> <i class="bi bi-chevron-right"></i></button></div>
+      <div class="scene"><img src="/assets/images/scene-field.svg" width="1000" height="330" alt="" data-depth="10"></div>
+    </section>
+  </form>
+  <section id="done" class="success" hidden aria-live="polite"></section>
+</main>
+<footer class="foot" id="foot"></footer>
+<div class="sprout" id="sprout" aria-hidden="true" style="--p:0"><svg viewBox="0 0 52 52"><defs><linearGradient id="sg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#8fd14b"/><stop offset="1" stop-color="#168447"/></linearGradient></defs><circle class="ring" cx="26" cy="26" r="22"/><circle class="val" cx="26" cy="26" r="22"/><g class="plant"><path d="M26 40V22" stroke="#2f9a48" stroke-width="3" stroke-linecap="round"/><path d="M26 26c0-9 5-14 13-14 0 9-5 14-13 14z" fill="#6fbf3a"/><path d="M26 31c0-7-4-12-12-12 0 8 5 12 12 12z" fill="#2f9a48"/></g></svg><span>0%</span></div>
+<noscript><p style="text-align:center">กรุณาเปิดใช้งาน JavaScript เพื่อสมัครอบรม</p></noscript>
+<script type="module" src="/assets/js/form.js"></script>
+</body>
+</html>

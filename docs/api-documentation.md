@@ -1,0 +1,41 @@
+# REST API (`/api/v1`)
+
+ตอบเป็น `{success, message, data, meta}` เมื่อผิดพลาด `meta.code` และ `meta.errors[{field,message}]`
+คำขอที่ใช้ cookie และไม่ใช่ GET ต้องส่ง `X-CSRF-Token` (จาก `/auth/session` หรือ `/admin/auth/me`)
+
+## สาธารณะ
+`GET /health` · `GET /catalog/universities` · `GET /catalog/sessions?universityId=` · `GET /catalog/options` · `GET /catalog/site-info` · `GET /catalog/legal`
+`POST /applications` (multipart: ช่องข้อมูล + `id_card`, `previous_certificate`, `payment_slip`, `portrait_photo`, ต้องมี `idempotencyKey` UUID)
+
+## ผู้สมัคร
+| | |
+|---|---|
+| `GET /auth/session`, `POST /auth/logout` | สถานะ session |
+| `GET /auth/line/start`, `GET /auth/line/callback` | LINE Login |
+| `POST /line/link-account`, `POST /line/unlink-account` | ผูก/ยกเลิก (ต้องล็อกอิน LINE) |
+| `POST /applications/access` | ยืนยันด้วยเลขที่ใบสมัคร + เลขบัตร + มือถือ |
+| `GET /applications/me/status` | ใบสมัครที่มีสิทธิ์เห็น |
+| `POST /applications/me/:id/erasure-request`, `/cancel` | ขอลบข้อมูล/ยกเลิกคำขอ |
+| `POST /applications/me/:id/withdraw-consent` | ถอนความยินยอมข้อมูลอ่อนไหว |
+| `POST /applications/me/:id/documents` | ส่งเอกสารที่ไม่ผ่านใหม่ |
+
+## เจ้าหน้าที่ (`/admin`)
+| Endpoint | สิทธิ์ |
+|---|---|
+| `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` | — |
+| `GET /dashboard`, `GET /applications`, `GET /applications/:id` | applicants.view |
+| `POST /applications/:id/status`, `/documents/:docId/review`, `/resend-email` | applicants.review |
+| `GET /applications/:id/documents/:docId`, `POST /applications/:id/reveal-ids` | documents.view (ลง audit) |
+| `GET /applications/export` | applicants.export |
+| `GET /catalog`, `POST/PUT/DELETE /catalog/{universities,options,sessions}` | catalog.manage |
+| `GET/PUT /settings`, `GET/PUT /legal` | settings.manage |
+| `GET/PUT /integrations`, `POST /integrations/test/:target` | integrations.manage (Super Admin, PUT ต้องยืนยันรหัสผ่าน) |
+| `GET/POST/PUT /users` | users.manage |
+| `GET /retention/{summary,due/:kind,requests,log}`, `POST /retention/purge`, `/retention/requests/:id/{decide,notice}`, `POST /applications/:id/hold` | retention.manage (Super Admin) |
+| `GET /audit-logs` | audit.view |
+
+## AI (`/ai`, สิทธิ์ ai.manage)
+`GET/POST /knowledge` · `GET/PUT/DELETE /knowledge/:id` · `POST /documents` (อัปโหลด) · `POST /chat` (ทดสอบถาม)
+
+## งานตั้งเวลา
+`POST /internal/jobs/run` พร้อม header `X-Jobs-Secret`

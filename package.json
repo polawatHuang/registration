@@ -1,0 +1,49 @@
+{
+  "name": "line-smart-training",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ระบบรับสมัครและบริหารการอบรม LINE SMART TRAINING",
+  "type": "module",
+  "main": "app.cjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node app.cjs",
+    "dev": "node --watch backend/server.js",
+    "dev:local": "node backend/scripts/dev-local.js",
+    "db:migrate": "node backend/scripts/migrate.js",
+    "db:seed": "node backend/scripts/seed.js",
+    "admin:create": "node backend/scripts/create-admin.js",
+    "keys:generate": "node backend/scripts/generate-keys.js",
+    "knowledge:import": "node backend/scripts/import-knowledge.js",
+    "retention:reapply": "node backend/scripts/retention-reapply.js",
+    "vendor": "node backend/scripts/copy-vendor.js",
+    "test": "node --test --test-concurrency=1 backend/tests/*.test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^18.0.10",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.5",
+    "helmet": "^8.3.0",
+    "mammoth": "^1.13.0",
+    "multer": "^2.5.0",
+    "mysql2": "^3.24.6",
+    "nodemailer": "^10.6.1",
+    "pino": "^10.4.0",
+    "pino-http": "^11.0.0",
+    "unpdf": "^2.2.2",
+    "write-excel-file": "^4.1.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@fontsource/prompt": "^5.3.0",
+    "@fontsource/sarabun": "^5.3.0",
+    "bootstrap-icons": "^1.13.2",
+    "chart.js": "^4.6.2",
+    "jszip": "^3.10.2",
+    "mysql-memory-server": "^1.18.0"
+  }
+}

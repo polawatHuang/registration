@@ -1,0 +1,21 @@
+CREATE TABLE ai_knowledge (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  source_type ENUM('faq','file') NOT NULL,
+  category VARCHAR(50) NOT NULL,
+  title VARCHAR(300) NOT NULL,
+  content MEDIUMTEXT NOT NULL,
+  keywords VARCHAR(500) NULL,
+  status ENUM('draft','published') NOT NULL DEFAULT 'draft',
+  priority INT NOT NULL DEFAULT 0,
+  original_name VARCHAR(255) NULL,
+  storage_name VARCHAR(100) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  size_bytes INT UNSIGNED NULL,
+  content_sha256 CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  updated_by INT UNSIGNED NULL,
+  deleted_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY ix_knowledge_list (deleted_at, status, category),
+  KEY ix_knowledge_sha (content_sha256),
+  CONSTRAINT fk_knowledge_admin FOREIGN KEY (updated_by) REFERENCES admin_users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
