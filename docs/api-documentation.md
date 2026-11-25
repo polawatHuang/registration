@@ -52,4 +52,4 @@
 `POST /link-code`, `/unlink` ใช้ได้ทุกคนที่ล็อกอิน (เชื่อม LINE ของตัวเอง)
 
 ## งานตั้งเวลา
-`POST /internal/jobs/run` พร้อม header `X-Jobs-Secret`
+`POST /internal/jobs/run` พร้อม header `X-Jobs-Secret` · 200 เมื่อทุกงานสำเร็จ · 500 `JOBS_FAILED` พร้อมชื่องานและรหัสสาเหตุเมื่อมีงานล้ม (งานอื่นยังทำต่อ) · 403 secret ไม่ตรง

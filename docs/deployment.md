@@ -34,8 +34,11 @@ ADMIN_PASSWORD='ตั้งรหัสอย่างน้อย12ตัว' 
 ## 4. งานตั้งเวลา (จำเป็น: ส่งอีเมลซ้ำ ประมวลผลแชตค้าง เตือนก่อนอบรม ส่งแจ้งเตือนซ้ำ และล้าง session)
 Scheduled Tasks ทุก 5 นาที:
 ```bash
-curl -fsS -X POST -H "X-Jobs-Secret: ค่าใน.env" https://โดเมน/api/v1/internal/jobs/run
+curl -fsS -m 240 -o /dev/null -X POST -H "X-Jobs-Secret: ค่าใน.env" https://โดเมน/api/v1/internal/jobs/run
 ```
+ถ้าล้มเหลว เปลี่ยนชั่วคราวเป็น `curl -sS -m 240 -w "\nHTTP %{http_code}\n" …` (ไม่มี `-f` และ `-o`) เพื่อดูว่างานใดล้มเพราะอะไร:
+- 403 = secret ไม่ตรง หรือยังไม่ Restart App หลังแก้ `.env`
+- 500 `ER_NO_SUCH_TABLE`/`ER_BAD_FIELD_ERROR` = รัน `db:migrate` ไม่ครบ · `EACCES`/`EROFS`/`EPERM` = `STORAGE_PATH` เขียนไม่ได้
 
 ## 5. Security headers
 nginx ของ Plesk อาจส่งไฟล์ใน `frontend` เองโดยไม่ผ่าน Node ให้เพิ่มใน Additional nginx directives:

@@ -24,7 +24,10 @@ export async function health(_req, res) {
 }
 export async function jobs(req, res) {
   if (!safeEqual(req.get('x-jobs-secret') ?? '', env.JOBS_SECRET)) throw forbidden();
-  ok(res, await runJobs());
+  const { results, failed } = await runJobs();
+  if (!failed.length) return ok(res, results);
+  // ตอบ 500 ให้ Plesk แจ้งเตือน งานอื่นที่ไม่ล้มทำเสร็จแล้ว
+  return res.status(500).json({ success: false, message: `งานล้มเหลว: ${failed.join(', ')}`, data: results, meta: { code: 'JOBS_FAILED', requestId: req.id } });
 }
 export const universities = async (_req, res) => ok(res, await catalog.publicUniversities());
 export const sessions = async (req, res) => ok(res, await catalog.publicSessions(parse(id, req.query.universityId)));

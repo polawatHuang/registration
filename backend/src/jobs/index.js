@@ -1,3 +1,4 @@
+import { logger } from '../config/logger.js';
 import { query } from '../config/db.js';
 import { flushFiles, syncLedger } from '../services/retentionService.js';
 import { job } from '../services/notificationService.js';
@@ -22,18 +23,30 @@ const JOBS = {
   },
 };
 
-export async function runJobs() {
+async function runJob(name, job) {
+  await query('INSERT IGNORE INTO job_locks (job_name, locked_until) VALUES (:name, UTC_TIMESTAMP())', { name });
+  const { affectedRows } = await query(`UPDATE job_locks SET locked_until = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 5 MINUTE)
+    WHERE job_name = :name AND locked_until <= UTC_TIMESTAMP()`, { name });
+  if (!affectedRows) return 'skipped';
+  try {
+    return await job();
+  } finally {
+    await query('UPDATE job_locks SET locked_until = UTC_TIMESTAMP(), last_finished_at = UTC_TIMESTAMP() WHERE job_name = :name', { name })
+      .catch((err) => logger.error({ job: name, err: { code: err.code } }, 'job lock release failed'));
+  }
+}
+
+/** งานที่ล้มต้องไม่ขวางงานอื่น ผลลัพธ์บอกเฉพาะรหัสสาเหตุ เพราะข้อความ error อาจมีข้อมูลส่วนบุคคล */
+export async function runJobs(jobs = JOBS) {
   const results = {};
-  for (const [name, job] of Object.entries(JOBS)) {
-    await query('INSERT IGNORE INTO job_locks (job_name, locked_until) VALUES (:name, UTC_TIMESTAMP())', { name });
-    const { affectedRows } = await query(`UPDATE job_locks SET locked_until = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 5 MINUTE)
-      WHERE job_name = :name AND locked_until <= UTC_TIMESTAMP()`, { name });
-    if (!affectedRows) { results[name] = 'skipped'; continue; }
-    try {
-      results[name] = await job();
-    } finally {
-      await query('UPDATE job_locks SET locked_until = UTC_TIMESTAMP(), last_finished_at = UTC_TIMESTAMP() WHERE job_name = :name', { name });
+  const failed = [];
+  for (const [name, job] of Object.entries(jobs)) {
+    try { results[name] = await runJob(name, job); } catch (err) {
+      const code = err.code ?? err.name ?? 'ERROR';
+      logger.error({ job: name, err: { message: err.message, code: err.code, stack: err.stack } }, 'job failed');
+      results[name] = { failed: code };
+      failed.push(`${name} (${code})`);
     }
   }
-  return results;
+  return { results, failed };
 }

@@ -395,6 +395,35 @@ describe('อีเมลยืนยันการสมัคร', () => {
     await until(async () => (await row(bad.body.data.id))[0].status === 'failed');
     s.smtp.mode = 'ok';
   });
+  test('งานตั้งเวลาที่ล้มไม่ขวางงานอื่น: อีเมลยังส่ง ตอบ 500 พร้อมชื่องาน และหายแล้วกลับมาปกติ', async () => {
+    const r = await s.apply({ sessionId: await s.newSession(), email: `j${Date.now()}@example.com` });
+    const id = r.body.data.id;
+    await until(async () => (await row(id))[0].status === 'sent');
+    const ledger = path.join(s.storage, 'purge-ledger.jsonl');
+    await fs.rename(ledger, `${ledger}.bak`).catch(() => {});
+    await fs.mkdir(ledger); // อ่านไฟล์ไม่ได้ (EISDIR)
+    await s.query('RENAME TABLE notification_queue TO notification_queue_x');
+    try {
+      await s.query("UPDATE email_queue SET status = 'pending', retry_count = 0, next_attempt_at = UTC_TIMESTAMP() WHERE application_id = :id", { id });
+      const res = await run();
+      assert.equal(res.status, 500);
+      assert.equal(res.body.meta.code, 'JOBS_FAILED');
+      assert.match(res.body.message, /purgeFiles \(EISDIR\)/);
+      assert.match(res.body.message, /notifications \(ER_NO_SUCH_TABLE\)/);
+      assert.ok(!res.buffer.toString().includes('notification_queue'), 'ไม่เปิดข้อความ error ภายใน');
+      assert.equal(typeof res.body.data.chat, 'object');
+      assert.equal(typeof res.body.data.cleanup.attempts, 'number');
+      assert.equal((await row(id))[0].status, 'sent');
+      assert.equal(s.smtp.mails.filter((m) => m.to === r.fields.email).length, 2);
+    } finally {
+      await s.query('RENAME TABLE notification_queue_x TO notification_queue');
+      await fs.rmdir(ledger);
+      await fs.rename(`${ledger}.bak`, ledger).catch(() => {});
+    }
+    const again = await run();
+    assert.equal(again.status, 200, JSON.stringify(again.body));
+    assert.ok(Object.values(again.body.data).every((v) => v !== 'skipped'), 'ล็อกต้องถูกปลดแม้งานล้ม');
+  });
   test('เจ้าหน้าที่ส่งซ้ำได้ จำกัด 3 ครั้ง/ชม. และต้องมีสิทธิ์', async () => {
     const r = await s.apply({ sessionId: await s.newSession() });
     const id = r.body.data.id;
