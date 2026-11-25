@@ -25,6 +25,9 @@ const limiter = (limit, minutes) => rateLimit({
   handler: (_req, _res, next) => next(tooMany()),
 });
 export const apiLimiter = limiter(300, 5);
+/** หน้าแชตถามข้อมูลใหม่ทุกไม่กี่วินาที และเจ้าหน้าที่หลายคนอาจใช้ IP เดียวกัน */
+export const chatLimiter = limiter(3000, 5);
+export const webhookLimiter = limiter(6000, 5);
 export const submitLimiter = limiter(15, 60);
 export const authLimiter = limiter(30, 15);
 

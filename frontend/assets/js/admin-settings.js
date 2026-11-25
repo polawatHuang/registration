@@ -5,14 +5,14 @@ import { can, failed, formDialog, initAdmin, skeleton } from './admin.js';
 const main = await initAdmin('settings');
 const GROUPS = {
   line_login: ['person-badge', '#05a848', 'LINE Login', 'ให้ผู้สมัครเข้าสู่ระบบบนเว็บไซต์'],
-  line_messaging: ['line', '#06c755', 'LINE OA (Messaging API + LIFF)', 'ใช้ส่งข้อความและรับ webhook เมื่อเปิดระบบ LINE OA ในรอบ 2'],
+  line_messaging: ['line', '#06c755', 'LINE OA (Messaging API + LIFF)', 'รับและตอบแชตลูกค้าในหน้า "แชต"'],
   email: ['envelope-fill', '#f5821f', 'อีเมล (SMTP)', 'ส่งข้อมูลการสมัครให้ผู้สมัครทันทีหลังกรอกแบบฟอร์มเสร็จ'],
-  minimax: ['stars', '#6a4fc0', 'MiniMax AI', 'ผู้ให้บริการ AI เดียวของระบบ ใช้เมื่อเปิด AI Chatbot ในรอบ 5'],
+  minimax: ['stars', '#6a4fc0', 'MiniMax AI', 'ผู้ให้บริการ AI เดียวของระบบ ใช้ตอบแชตและช่วยร่างคำตอบ'],
 };
 const SITE = [['announcement', 'ประกาศหน้าเว็บ', 'textarea'], ['payment_instructions', 'วิธีชำระค่าลงทะเบียน', 'textarea'], ['contact_phone', 'โทรศัพท์ติดต่อ'], ['contact_email', 'อีเมลติดต่อ'], ['contact_line_url', 'ลิงก์ LINE (https)']];
 const LEGAL = [['controller_name', 'ชื่อผู้ควบคุมข้อมูลส่วนบุคคล (ชื่อเต็มของหน่วยงาน)'], ['controller_address', 'ที่อยู่', 'textarea'], ['controller_contact', 'โทรศัพท์/อีเมลติดต่อ'], ['dpo_contact', 'เจ้าหน้าที่คุ้มครองข้อมูล (DPO) ชื่อและช่องทาง ถ้ามี', 'textarea'],
   ['basis_main', 'ฐานกฎหมายหลักของการรับสมัครและจัดอบรม', 'select', [['', '— เลือก —'], ['contract', 'สัญญา/คำขอก่อนเข้าทำสัญญา (ม.24(3))'], ['public_task', 'ภารกิจเพื่อประโยชน์สาธารณะ/ใช้อำนาจรัฐ (ม.24(4))']]], ['recipients', 'หน่วยงานที่อาจได้รับข้อมูล เช่น มหาวิทยาลัยผู้จัด หน่วยงานกำกับ', 'textarea'],
-  ['retention_applications', 'เก็บใบสมัคร/ประวัติอบรมกี่เดือน (นับจากวันอบรมเสร็จ) ตรวจกฎหมายบัญชี/ภาษีที่ต้องเก็บหลักฐานก่อน', 'number'], ['retention_documents', 'เก็บภาพบัตรและเอกสารแนบกี่เดือน (นับจากวันอบรมเสร็จ)', 'number'], ['retention_rejected', 'เก็บใบที่ไม่ผ่าน/ยกเลิก และบัญชี LINE ที่ไม่ใช้ กี่เดือน', 'number'], ['retention_logs', 'เก็บบันทึกการใช้งานกี่วัน (ไม่น้อยกว่า 90)', 'number'],
+  ['retention_applications', 'เก็บใบสมัคร/ประวัติอบรมกี่เดือน (นับจากวันอบรมเสร็จ) ตรวจกฎหมายบัญชี/ภาษีที่ต้องเก็บหลักฐานก่อน', 'number'], ['retention_documents', 'เก็บภาพบัตรและเอกสารแนบกี่เดือน (นับจากวันอบรมเสร็จ)', 'number'], ['retention_rejected', 'เก็บใบที่ไม่ผ่าน/ยกเลิก และบัญชี LINE ที่ไม่ใช้ กี่เดือน', 'number'], ['retention_chats', 'เก็บข้อความแชต LINE กี่เดือน', 'number'], ['retention_logs', 'เก็บบันทึกการใช้งานกี่วัน (ไม่น้อยกว่า 90)', 'number'],
   ['refund_policy', 'นโยบายค่าลงทะเบียน การยกเลิก เลื่อนรุ่น และคืนเงิน', 'textarea'], ['copyright_owner', 'เจ้าของลิขสิทธิ์เว็บไซต์'], ['effective_date', 'วันที่มีผลบังคับ', 'date']];
 const BASIS = { contract: 'สัญญา (ม.24(3))', public_task: 'ประโยชน์สาธารณะ (ม.24(4))' };
 const SOURCE = { admin: 'ตั้งจากหน้านี้', env: 'จากไฟล์ .env', unreadable: 'ถอดรหัสไม่ได้ กรุณาใส่ใหม่' };
@@ -47,7 +47,7 @@ function card(key, d, reload) {
     h('header', {}, h('i', { class: `bi bi-${ic}` }), h('div', {}, h('h2', {}, title), h('p', { class: 'muted' }, desc)), h('span', { class: `badge ${n === fields.length ? 'ok' : n ? 'warn' : ''}` }, n === fields.length ? 'ครบแล้ว' : `${n}/${fields.length}`)),
     h('dl', { class: 'kv' }, fields.map((f) => h('div', {}, h('dt', {}, f.label), h('dd', { class: f.secret ? 'mono' : '' }, f.isSet ? (f.options?.find((o) => o[0] === f.value)?.[1] ?? f.value) : '— ยังไม่ตั้ง —'), f.source && h('small', { class: 'muted' }, SOURCE[f.source], f.updatedAt && ` · ${fmtDateTime(f.updatedAt)}`)))),
     key === 'line_login' && copyRow('Callback URL (ใส่ใน LINE Developers > LINE Login)', d.callbackUrl),
-    key === 'line_messaging' && copyRow('Webhook URL (เปิดใช้ในรอบ 2)', d.webhookUrl),
+    key === 'line_messaging' && copyRow('Webhook URL (ใส่ใน LINE Developers > Messaging API แล้วเปิด Use webhook)', d.webhookUrl),
     h('div', { class: 'bar-actions', style: { margin: '14px 0 0' } }, h('button', { class: 'btn btn-green', type: 'button', onclick: () => edit(key, d, reload) }, icon('pencil-fill'), 'แก้ไข'),
       h('button', { class: 'btn', type: 'button', onclick: (e) => busy(e.currentTarget, async () => {
         try { const r = await send('POST', `/admin/integrations/test/${key}`); out.className = `testout ${r.ok ? 'ok' : 'bad'}`; out.replaceChildren(icon(r.ok ? 'check-circle-fill' : 'x-circle-fill'), r.message); } catch (x) { out.className = 'testout bad'; out.replaceChildren(icon('x-circle-fill'), x.message); }

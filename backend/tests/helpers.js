@@ -41,7 +41,7 @@ async function startSmtpMock() {
 async function startLineMock() {
   const codes = new Map();
   const tokens = new Map();
-  const mock = { overrides: {}, codes, aiReply: null, aiRequests: [] };
+  const mock = { overrides: {}, codes, aiReply: null, aiRequests: [], aiDelay: null, chat: { sent: [], keys: new Set(), status: { reply: [], push: [] }, quota: { type: 'limited', value: 1000 }, used: 0, loading: 0, content: PNG } };
   const server = http.createServer(async (req, res) => {
     let body = '';
     for await (const c of req) body += c;
@@ -55,9 +55,23 @@ async function startLineMock() {
       tokens.set(t, c);
       return json(200, { id_token: t });
     }
+    if (req.url === '/v2/bot/message/reply' || req.url === '/v2/bot/message/push') {
+      const kind = req.url.split('/').pop();
+      const st = mock.chat.status[kind].length ? mock.chat.status[kind].shift() : 200;
+      const key = req.headers['x-line-retry-key'];
+      if (st === 'hang') return setTimeout(() => res.destroy(), 50);
+      if (st === 200 && key && mock.chat.keys.has(key)) return json(409, {});
+      if (st === 200 || st === 'lost') { if (key) mock.chat.keys.add(key); mock.chat.sent.push({ kind, key, ...JSON.parse(body) }); if (st === 'lost') return json(500, {}); return json(200, {}); }
+      return json(st, {});
+    }
+    if (req.url.startsWith('/v2/bot/profile/')) return json(200, { displayName: `คุณ ${req.url.split('/').pop().slice(0, 12)}`, pictureUrl: 'https://profile.line-scdn.net/x' });
+    if (req.url === '/v2/bot/chat/loading/start') { mock.chat.loading += 1; return json(202, {}); }
+    if (req.url === '/v2/bot/message/quota') return json(200, mock.chat.quota);
+    if (req.url === '/v2/bot/message/quota/consumption') return json(200, { totalUsage: mock.chat.used });
+    if (/^\/v2\/bot\/message\/[^/]+\/content$/.test(req.url)) { res.writeHead(200); return res.end(mock.chat.content); }
     const good = /^Bearer good-/.test(req.headers.authorization ?? '');
     if (req.url === '/v2/bot/info') return good ? json(200, { displayName: 'OA' }) : json(401, {});
-    if (req.url === '/chat/completions' && mock.aiReply) { mock.aiRequests.push(body); return json(200, { choices: [{ finish_reason: mock.aiFinish ?? 'stop', message: { content: mock.aiReply } }], base_resp: { status_code: 0 } }); }
+    if (req.url === '/chat/completions' && mock.aiReply) { mock.aiRequests.push(body); if (mock.aiDelay) await mock.aiDelay(); return json(200, { choices: [{ finish_reason: mock.aiFinish ?? 'stop', message: { content: mock.aiReply } }], base_resp: { status_code: 0 } }); }
     if (req.url === '/chat/completions') return good ? json(200, { choices: [{}], base_resp: { status_code: 0 } }) : json(200, { base_resp: { status_code: 1004 } });
     const t = tokens.get(f.get('id_token'));
     if (!t || t.nonce !== f.get('nonce')) return json(400, {});
@@ -101,7 +115,7 @@ export async function startStack() {
   Object.assign(process.env, {
     NODE_ENV: 'test', PORT: String(port), APP_URL: `http://127.0.0.1:${port}`, TRUST_PROXY: '0', DB_HOST: '127.0.0.1', DB_PORT: String(db.port), DB_NAME: db.dbName, DB_USER: db.username, DB_PASSWORD: '',
     DATA_ENCRYPTION_KEY: crypto.randomBytes(32).toString('base64'), DATA_HASH_KEY: crypto.randomBytes(32).toString('base64'), JOBS_SECRET: crypto.randomBytes(24).toString('hex'),
-    STORAGE_PATH: storage, MAX_UPLOAD_MB: '1', LINE_LOGIN_CHANNEL_ID: '1234567890', LINE_LOGIN_CHANNEL_SECRET: crypto.randomBytes(16).toString('hex'), LINE_API_URL: line.url, MINIMAX_TEST_URL: line.url, SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtp.port), SMTP_FROM_EMAIL: 'noreply@example.com', SMTP_ALLOW_INSECURE: '1', LOG_LEVEL: 'silent',
+    STORAGE_PATH: storage, MAX_UPLOAD_MB: '1', LINE_LOGIN_CHANNEL_ID: '1234567890', LINE_LOGIN_CHANNEL_SECRET: crypto.randomBytes(16).toString('hex'), LINE_API_URL: line.url, LINE_DATA_URL: line.url, LINE_CHANNEL_SECRET: crypto.randomBytes(16).toString('hex'), LINE_CHANNEL_ACCESS_TOKEN: 'test-channel-access-token', MINIMAX_TEST_URL: line.url, SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtp.port), SMTP_FROM_EMAIL: 'noreply@example.com', SMTP_ALLOW_INSECURE: '1', LOG_LEVEL: 'silent',
   });
   const { pool, query } = await import('../src/config/db.js');
   const { migrate, seed } = await import('../src/utils/migrator.js');

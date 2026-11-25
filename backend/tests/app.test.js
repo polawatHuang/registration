@@ -246,6 +246,9 @@ describe('ความปลอดภัยฝั่งเจ้าหน้า�
     for (let i = 0; i < 5; i += 1) assert.equal((await c.post(`${A}/auth/login`, { username: a.username, password: 'wrong' })).status, 401);
     assert.equal((await c.post(`${A}/auth/login`, { username: a.username, password: a.password })).status, 429);
     await s.query('DELETE FROM auth_attempts');
+    await s.query('DELETE FROM auth_attempts');
+    const ok = await s.newAdmin('admin');
+    for (let i = 0; i < 35; i += 1) assert.equal((await new Client(s.base).post(`${A}/auth/login`, { username: ok.username, password: ok.password })).status, 200);
     const boss = await s.adminClient();
     const staff = await s.adminClient('training_staff');
     const upd = (x, status) => boss.put(`${A}/users/${x.id}`, { displayName: 'x', roleId: x.roleId, status });
@@ -259,6 +262,9 @@ describe('ความปลอดภัยฝั่งเจ้าหน้า�
     const r = await s.apply({ sessionId: await s.newSession() });
     const found = (await admin.get(`${A}/applications?q=${r.fields.nationalId}`)).body;
     assert.deepEqual(found.data.map((x) => x.id), [r.body.data.id]);
+    const thai = await s.apply({ sessionId: await s.newSession(), fullName: 'กัญญารัตน์ ค้นหาไทย' });
+    assert.deepEqual((await admin.get(`${A}/applications?q=${encodeURIComponent('ค้นหาไทย')}`)).body.data?.map((x) => x.id), [thai.body.data.id]);
+    assert.deepEqual((await admin.get(`${A}/applications?q=${thai.body.data.applicationNo.toLowerCase()}`)).body.data.map((x) => x.id), [thai.body.data.id]);
     assert.equal((await admin.get(`${A}/applications?q=${encodeURIComponent("%' OR 1=1 --")}`)).body.meta.total, 0);
     const x = await admin.get(`${A}/applications/export`);
     assert.equal(x.status, 200);
@@ -488,7 +494,7 @@ describe('คลังความรู้ AI', () => {
 });
 
 describe('กฎหมายและความยินยอม', () => {
-  const full = { controller_name: 'หน่วยงานทดสอบ', controller_address: 'ที่อยู่', controller_contact: 'โทร', dpo_contact: '', basis_main: 'contract', recipients: 'มหาวิทยาลัย', retention_applications: 60, retention_documents: 12, retention_rejected: 6, retention_logs: 90, refund_policy: 'นโยบาย', copyright_owner: 'เจ้าของ', effective_date: '2026-12-01', approved: true };
+  const full = { controller_name: 'หน่วยงานทดสอบ', controller_address: 'ที่อยู่', controller_contact: 'โทร', dpo_contact: '', basis_main: 'contract', recipients: 'มหาวิทยาลัย', retention_applications: 60, retention_documents: 12, retention_rejected: 6, retention_logs: 90, retention_chats: 12, refund_policy: 'นโยบาย', copyright_owner: 'เจ้าของ', effective_date: '2026-12-01', approved: true };
   test('เผยแพร่ได้เมื่อครบ, เปลี่ยนข้อความแล้วผู้สมัครต้องอ่านใหม่, เก็บหลักฐานแต่ละฉบับ', async () => {
     const admin = await s.adminClient();
     assert.equal((await (await s.adminClient('training_staff')).put(`${A}/legal`, full)).status, 403);
@@ -530,7 +536,7 @@ describe('กฎหมายและความยินยอม', () => {
 
 describe('ลบข้อมูล', () => {
   const R = `${A}/retention`;
-  const LEGAL = { controller_name: 'ก', controller_address: 'ก', controller_contact: 'ก', dpo_contact: '', basis_main: 'contract', recipients: 'ก', retention_applications: 60, retention_documents: 12, retention_rejected: 6, retention_logs: 90, refund_policy: 'ก', copyright_owner: 'ก', effective_date: '2026-12-01', approved: true };
+  const LEGAL = { controller_name: 'ก', controller_address: 'ก', controller_contact: 'ก', dpo_contact: '', basis_main: 'contract', recipients: 'ก', retention_applications: 60, retention_documents: 12, retention_rejected: 6, retention_logs: 90, retention_chats: 12, refund_policy: 'ก', copyright_owner: 'ก', effective_date: '2026-12-01', approved: true };
   const publish = async (admin, over = {}) => { const r = await admin.put(`${A}/legal`, { ...LEGAL, ...over }); await s.refreshVersion(); return r; };
   const purge = (admin, kind, ids, over = {}) => admin.post(`${R}/purge`, { kind, ids, password: admin.admin.password, confirm: 'ลบถาวร', ...over });
   const ended = (sessionId, months) => s.query('UPDATE training_sessions SET ends_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL :months MONTH) WHERE id = :sessionId', { sessionId, months });
@@ -707,6 +713,276 @@ describe('ลบข้อมูล', () => {
     await ended(sessionId, 61);
     const both = await Promise.all([purge(admin, 'applications', [r.body.data.id]), purge(admin, 'applications', [r.body.data.id])]);
     assert.equal(both.reduce((t, x) => t + x.body.data.purged, 0), 1);
+  });
+});
+
+describe('รวมแชต LINE OA', () => {
+  const C = `${A}/chat`;
+  let admin; let n = 0;
+  const until = async (fn) => { for (let i = 0; i < 100; i += 1) { const v = await fn(); if (v) return v; await new Promise((r) => setTimeout(r, 30)); } throw new Error('timeout'); };
+  const sign = (raw) => crypto.createHmac('sha256', process.env.LINE_CHANNEL_SECRET).update(raw).digest('base64');
+  const hook = (events, { raw = JSON.stringify({ destination: 'x', events }), signature = sign(raw) } = {}) => fetch(`${s.base}/api/v1/line/webhook`, { method: 'POST', body: raw, headers: { 'content-type': 'application/json', ...(signature ? { 'x-line-signature': signature } : {}) } });
+  const ev = (uid, message, over = {}) => ({ type: 'message', mode: 'active', timestamp: Date.now(), webhookEventId: crypto.randomUUID(), source: { type: 'user', userId: uid }, replyToken: crypto.randomUUID(), message: { id: String(1e6 + (n += 1)), ...message }, ...over });
+  const say = async (uid, text, over) => { const e = ev(uid, { type: 'text', text }, over); assert.equal((await hook([e])).status, 200); await settled(); return e; };
+  const settled = () => until(async () => !(await s.query("SELECT 1 FROM line_webhook_events WHERE status IN ('pending','processing') LIMIT 1")).length);
+  const conv = async (uid) => (await s.query('SELECT c.* FROM chat_conversations c JOIN line_users l ON l.id = c.line_user_id WHERE l.line_user_id = :uid', { uid }))[0];
+  const sentTo = (mark) => s.line.chat.sent.filter((x) => JSON.stringify(x).includes(mark));
+  const uid = () => `U${crypto.randomUUID().replaceAll('-', '')}`;
+  const msgs = async (id) => (await admin.get(`${C}/${id}/messages`)).body.data.items;
+  const send = (id, text, clientId = crypto.randomUUID(), c = admin) => c.post(`${C}/${id}/messages`, { text, clientId });
+  before(async () => { admin = await s.adminClient(); });
+  const aiOn = async () => {
+    await admin.put(`${A}/integrations`, { password: admin.admin.password, values: { minimax_api_key: 'good-key-1234567890', minimax_model: 'MiniMax-Test' } });
+    assert.equal((await admin.put(`${C}/ai`, { enabled: true })).status, 200);
+    await admin.post('/api/v1/ai/knowledge', { title: 'มังกร', content: `มังกรทองราคา 700 บาท ${crypto.randomUUID()}`, category: 'FAQ', keywords: 'มังกร', status: 'published', priority: 0 });
+    s.line.aiReply = 'มังกรราคา 700 บาท [1]';
+  };
+  const aiOff = async () => { await admin.put(`${C}/ai`, { enabled: false }); s.line.aiReply = null; };
+
+  test('webhook: ต้องมีลายเซ็นถูกต้องจาก raw body, ปุ่ม Verify ได้ 200, ซ้ำไม่บันทึกซ้ำ, ไม่รับกลุ่ม', async () => {
+    const u = uid();
+    const e = ev(u, { type: 'text', text: 'สวัสดี' });
+    assert.equal((await hook([e], { signature: 'bad' })).status, 401);
+    assert.equal((await hook([e], { signature: null })).status, 401);
+    assert.equal((await hook([e], { raw: `${JSON.stringify({ destination: 'x', events: [e] })} `, signature: sign(JSON.stringify({ destination: 'x', events: [e] })) })).status, 401);
+    assert.equal((await hook([])).status, 200);
+    assert.equal(await conv(u), undefined);
+    await Promise.all([hook([e]), hook([{ ...e, deliveryContext: { isRedelivery: true } }]), hook([e, e])]);
+    await settled();
+    assert.equal((await conv(u)).message_count, 1);
+    assert.equal((await hook([ev(u, { type: 'text', text: 'x' }, { source: { type: 'group', groupId: 'G', userId: u } })])).status, 200);
+    await settled();
+    assert.equal((await conv(u)).message_count, 1);
+    const raw = JSON.stringify(await s.query('SELECT * FROM chat_messages')) + JSON.stringify(await s.query('SELECT * FROM chat_conversations')) + JSON.stringify(await s.query('SELECT * FROM line_webhook_events'));
+    assert.ok(!raw.includes('สวัสดี'));
+  });
+
+  test('ทุกคนที่ทักอยู่ในรายการ ค้นหา/กรอง/อ่านแล้ว และข้อความของคนเดียวกันเรียงลำดับ', async () => {
+    const [a, b] = [uid(), uid()];
+    await hook([ev(a, { type: 'text', text: 'หนึ่ง' }), ev(b, { type: 'text', text: 'บี' }), ev(a, { type: 'text', text: 'สอง' }), ev(a, { type: 'sticker', keywords: ['hi'] }), ev(a, { type: 'location', address: 'กรุงเทพ' })]);
+    await settled();
+    const ca = await conv(a);
+    assert.deepEqual((await msgs(ca.id)).map((m) => m.text), ['หนึ่ง', 'สอง', '[สติกเกอร์] hi', '[ตำแหน่ง] กรุงเทพ']);
+    const p = (await admin.get(`${C}/poll?filter=unread`)).body.data;
+    const row = p.conversations.find((x) => x.id === ca.id);
+    assert.equal(row.unread, 4);
+    assert.match(row.name, /^คุณ U/);
+    const same = (await admin.get(`${C}/poll?filter=unread&rev=${encodeURIComponent(p.rev)}`)).body.data;
+    assert.equal(same.conversations, null);
+    const last = (await msgs(ca.id)).at(-1).id;
+    assert.equal((await admin.post(`${C}/${ca.id}/update`, { readUpTo: last })).body.data.unread, 0);
+    assert.ok(!(await admin.get(`${C}/poll?filter=unread`)).body.data.conversations.some((x) => x.id === ca.id));
+    assert.deepEqual((await admin.get(`${C}/poll?q=${encodeURIComponent(row.name)}`)).body.data.conversations.map((x) => x.id), [ca.id]);
+  });
+
+  test('เจ้าหน้าที่ตอบ: ใช้ reply token ก่อน (ครั้งเดียว) แล้ว push, กดซ้ำไม่ส่งซ้ำ, AI ของแชตนั้นหยุด', async () => {
+    const u = uid();
+    const e = await say(u, 'ถามหน่อย');
+    const c = await conv(u);
+    const id = crypto.randomUUID();
+    const rs = await Promise.all([send(c.id, 'ตอบแรก-A1', id), send(c.id, 'ตอบแรก-A1', id)]);
+    assert.ok(rs.every((r) => r.status === 200));
+    await until(() => sentTo('ตอบแรก-A1').length === 1);
+    assert.equal(sentTo('ตอบแรก-A1')[0].kind, 'reply');
+    assert.equal(sentTo('ตอบแรก-A1')[0].replyToken, e.replyToken);
+    const second = await send(c.id, 'ตอบสอง-A2');
+    assert.equal(second.body.data.via, 'push');
+    assert.equal(sentTo('ตอบสอง-A2')[0].to, u);
+    const after = await conv(u);
+    assert.equal(after.ai_mode, 'off');
+    assert.equal(after.assigned_admin_id, admin.admin.id);
+  });
+
+  test('ส่งไม่สำเร็จ: token หมดอายุ→push, push ไม่รู้ผลแล้วส่งซ้ำไม่ซ้ำข้อความ, reply ไม่รู้ผลไม่ push เอง, โควตาหมด, ถูกบล็อก', async () => {
+    const u = uid();
+    await say(u, 'x');
+    const c = await conv(u);
+    s.line.chat.status.reply = [400];
+    assert.equal((await send(c.id, 'B1')).body.data.via, 'push');
+    s.line.chat.status.push = ['lost'];
+    assert.equal((await send(c.id, 'B2')).body.data.status, 'sent');
+    assert.equal(sentTo('B2').length, 1);
+    await say(u, 'y');
+    s.line.chat.status.reply = ['hang'];
+    const unknown = await send(c.id, 'B3');
+    assert.equal(unknown.body.data.status, 'failed');
+    assert.equal(sentTo('B3').length, 0);
+    const again = await admin.post(`${C}/${c.id}/messages/${unknown.body.data.id}/retry`);
+    assert.equal(again.body.data.status, 'sent');
+    assert.equal((await admin.post(`${C}/${c.id}/messages/${unknown.body.data.id}/retry`)).status, 409);
+    const { forgetQuota } = await import('../src/integrations/lineMessagingClient.js');
+    s.line.chat.used = 1000; forgetQuota();
+    const q = await send(c.id, 'B4');
+    assert.match(q.body.data.error, /โควตา/);
+    assert.equal(sentTo('B4').length, 0);
+    s.line.chat.used = 0; forgetQuota();
+    await hook([{ type: 'unfollow', mode: 'active', timestamp: Date.now(), webhookEventId: crypto.randomUUID(), source: { type: 'user', userId: u } }]);
+    await settled();
+    assert.equal(code(await send(c.id, 'B5')), 'USER_BLOCKED');
+  });
+
+  test('AI: เปิด/ปิดทั้งระบบและรายแชต ตอบจากคลังความรู้ พร้อมป้ายผู้ช่วย AI', async () => {
+    const fresh = await s.adminClient();
+    await fresh.put(`${A}/integrations`, { password: fresh.admin.password, values: { minimax_api_key: null } });
+    assert.equal(code(await fresh.put(`${C}/ai`, { enabled: true })), 'AI_NOT_READY');
+    const u = uid();
+    s.line.aiReply = 'มังกรราคา 700 บาท [1]';
+    await say(u, 'มังกรราคา C0');
+    assert.ok(!s.line.chat.sent.some((x) => x.messages[0].sender));
+    await aiOn();
+    const load = s.line.chat.loading;
+    await say(u, 'มังกรราคาเท่าไร');
+    const c = await conv(u);
+    const ai = (await msgs(c.id)).at(-1);
+    assert.equal(ai.sender, 'ai');
+    assert.equal(ai.via, 'reply');
+    assert.deepEqual(ai.ai.sources, ['มังกร']);
+    assert.ok(s.line.chat.loading > load);
+    assert.equal(s.line.chat.sent.at(-1).messages[0].sender.name, 'ผู้ช่วย AI');
+    await admin.post(`${C}/${c.id}/update`, { aiMode: 'off' });
+    await say(u, 'มังกรอีกครั้ง');
+    assert.equal((await msgs(c.id)).at(-1).sender, 'user');
+    await admin.post(`${C}/${c.id}/update`, { aiMode: 'auto' });
+    await say(u, 'มังกรรอบสาม');
+    assert.equal((await msgs(c.id)).at(-1).sender, 'ai');
+    await aiOff();
+    await say(u, 'มังกรรอบสี่');
+    assert.equal((await msgs(c.id)).at(-1).sender, 'user');
+  });
+
+  test('AI ไม่รู้/ขอคุยกับคน/ข้อความเก่า/ส่งรูป → เรียกเจ้าหน้าที่ และไม่ส่ง PII ให้ MiniMax', async () => {
+    await aiOn();
+    const u = uid();
+    s.line.aiReply = 'NO_ANSWER';
+    s.line.aiRequests.length = 0;
+    const nid = thaiId();
+    await say(u, `มังกร เลขบัตรผม ${nid}`);
+    assert.ok(s.line.aiRequests.length === 1 && !s.line.aiRequests[0].includes(nid));
+    let c = await conv(u);
+    assert.equal(c.attention_reason, 'AI ไม่มีข้อมูลตอบ');
+    assert.ok((await admin.get(`${C}/poll?filter=attention`)).body.data.conversations.some((x) => x.id === c.id));
+    s.line.aiReply = 'มังกรราคา 700 บาท [1]';
+    await say(u, 'ขอคุยกับเจ้าหน้าที่');
+    c = await conv(u);
+    assert.equal(c.ai_mode, 'off');
+    assert.equal(c.attention_reason, 'ขอคุยกับเจ้าหน้าที่');
+    const count = s.line.aiRequests.length;
+    await say(u, 'มังกร');
+    assert.equal(s.line.aiRequests.length, count);
+    await send(c.id, 'มาแล้วครับ');
+    assert.equal((await conv(u)).attention_reason, null);
+    await admin.post(`${C}/${c.id}/update`, { status: 'closed' });
+    assert.equal((await conv(u)).ai_mode, 'auto');
+    await say(u, 'มังกรหลังปิดเคส');
+    c = await conv(u);
+    assert.equal(c.status, 'open');
+    assert.equal((await msgs(c.id)).at(-1).sender, 'ai');
+    const old = uid();
+    await say(old, 'มังกรเก่า', { timestamp: Date.now() - 600_000 });
+    assert.equal((await msgs((await conv(old)).id)).length, 1);
+    const pic = uid();
+    await hook([ev(pic, { type: 'image', contentProvider: { type: 'line' } })]);
+    await settled();
+    assert.equal((await conv(pic)).attention_reason, 'ส่งไฟล์/รูป/สติกเกอร์');
+    const standby = uid();
+    const before2 = s.line.chat.sent.length;
+    await say(standby, 'มังกร', { mode: 'standby', replyToken: undefined });
+    assert.equal(s.line.chat.sent.length, before2);
+    await aiOff();
+  });
+
+  test('แข่งกัน: เจ้าหน้าที่ตอบหรือปิด AI ระหว่าง AI กำลังคิด → คำตอบ AI ถูกทิ้ง', async () => {
+    await aiOn();
+    for (const action of [(id) => send(id, 'คนตอบก่อน'), (id) => admin.post(`${C}/${id}/update`, { aiMode: 'off' }), () => admin.put(`${C}/ai`, { enabled: false })]) {
+      await admin.put(`${C}/ai`, { enabled: true });
+      const u = uid();
+      let release; let started;
+      const begun = new Promise((r) => { started = r; });
+      s.line.aiDelay = () => { started(); return new Promise((r) => { release = r; }); };
+      await hook([ev(u, { type: 'text', text: 'มังกรช้า' })]);
+      await begun;
+      const c = await conv(u);
+      await action(c.id);
+      release();
+      s.line.aiDelay = null;
+      await settled();
+      assert.ok(!(await msgs(c.id)).some((m) => m.sender === 'ai'));
+    }
+    await aiOff();
+  });
+
+  test('รูปภาพเก็บเข้ารหัสและเปิดดูได้, ยกเลิกข้อความแล้วเนื้อหาและไฟล์หาย, ไฟล์ปลอมไม่เก็บ', async () => {
+    const u = uid();
+    const e = ev(u, { type: 'image', contentProvider: { type: 'line' } });
+    const files = await s.countFiles();
+    await hook([e]); await settled();
+    const c = await conv(u);
+    const [m] = await msgs(c.id);
+    assert.equal(m.media, 'image/png');
+    assert.ok((await admin.get(`${C}/${c.id}/messages/${m.id}/media`)).buffer.equals(PNG));
+    const un = (id) => hook([{ type: 'unsend', mode: 'active', timestamp: Date.now(), webhookEventId: crypto.randomUUID(), source: { type: 'user', userId: u }, unsend: { messageId: id } }]);
+    await un(e.message.id); await settled();
+    assert.equal((await msgs(c.id))[0].type, 'unsent');
+    assert.equal((await msgs(c.id))[0].text, null);
+    assert.equal(await s.countFiles(), files);
+    assert.equal((await admin.get(`${C}/${c.id}/messages/${m.id}/media`)).status, 404);
+    s.line.chat.content = Buffer.from('<html><script>alert(1)</script></html>');
+    await hook([ev(u, { type: 'file', fileName: 'a.png' })]); await settled();
+    s.line.chat.content = PNG;
+    assert.equal((await msgs(c.id)).at(-1).media, null);
+  });
+
+  test('ต้อนรับเมื่อเพิ่มเพื่อน, ใบสมัครที่ผูกแสดงข้างแชต, ร่างคำตอบด้วย AI ไม่ส่งเอง', async () => {
+    const u = uid();
+    await hook([{ type: 'follow', mode: 'active', timestamp: Date.now(), webhookEventId: crypto.randomUUID(), source: { type: 'user', userId: u }, replyToken: crypto.randomUUID() }]);
+    await settled();
+    assert.equal(s.line.chat.sent.at(-1).messages[0].type, 'flex');
+    const client = new Client(s.base);
+    await s.lineLogin(client, u);
+    const app = await s.apply({ sessionId: await s.newSession() }, client);
+    const c = await conv(u);
+    assert.deepEqual((await admin.get(`${C}/${c.id}`)).body.data.applications.map((x) => x.no), [app.body.data.applicationNo]);
+    await aiOn(); await admin.put(`${C}/ai`, { enabled: false });
+    await say(u, 'มังกรเท่าไร');
+    const k = s.line.chat.sent.length;
+    const draft = (await admin.post(`${C}/${c.id}/suggest`)).body.data;
+    assert.equal(draft.text, 'มังกรราคา 700 บาท');
+    assert.equal(s.line.chat.sent.length, k);
+    await aiOff();
+  });
+
+  test('สิทธิ์: เจ้าหน้าที่เช็กชื่อเข้าไม่ได้, Training Staff ตอบได้แต่ปิด AI ทั้งระบบไม่ได้; กู้เหตุการณ์ค้าง', async () => {
+    const u = uid();
+    await say(u, 'ทดสอบสิทธิ์');
+    const c = await conv(u);
+    assert.equal((await (await s.adminClient('attendance_staff')).get(`${C}/poll`)).status, 403);
+    const staff = await s.adminClient('training_staff');
+    assert.equal((await send(c.id, 'จากสตาฟ', crypto.randomUUID(), staff)).status, 200);
+    assert.equal((await staff.put(`${C}/ai`, { enabled: true })).status, 403);
+    assert.equal((await staff.post(`${C}/${c.id}/update`, { aiMode: 'auto' })).status, 200);
+    const { encryptText } = await import('../src/utils/crypto.js');
+    const stuck = ev(u, { type: 'text', text: 'ค้างอยู่' });
+    await s.query("INSERT INTO line_webhook_events (event_id, user_hash, payload_enc, status, claimed_at, created_at) VALUES ('stuck-1', REPEAT('a', 64), :p, 'processing', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 MINUTE), UTC_TIMESTAMP())", { p: encryptText(JSON.stringify(stuck), 'webhook') });
+    await new Client(s.base).post('/api/v1/internal/jobs/run', {}, { headers: { 'x-jobs-secret': process.env.JOBS_SECRET } });
+    assert.equal((await msgs(c.id)).at(-1).text, 'ค้างอยู่');
+  });
+
+  test('PDPA: ลบแชตเก่า และลบแชตทั้งหมดเมื่อบุคคลถูกลบ', async () => {
+    const u = uid();
+    await hook([ev(u, { type: 'image', contentProvider: { type: 'line' } })]); await settled();
+    await say(u, 'ใหม่');
+    const c = await conv(u);
+    const first = (await msgs(c.id))[0];
+    await s.query('UPDATE chat_messages SET created_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 13 MONTH) WHERE id = :id', { id: first.id });
+    const files = await s.countFiles();
+    const purge = (kind, ids) => admin.post(`${A}/retention/purge`, { kind, ids, password: admin.admin.password, confirm: 'ลบถาวร' });
+    assert.equal((await purge('chats', [])).body.data.purged, 1);
+    assert.equal(await s.countFiles(), files - 1);
+    assert.deepEqual((await msgs(c.id)).map((m) => m.text), ['ใหม่']);
+    await s.query('UPDATE line_users SET last_interaction_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 MONTH) WHERE line_user_id = :u', { u });
+    const [l] = await s.query('SELECT id FROM line_users WHERE line_user_id = :u', { u });
+    assert.equal((await purge('line_users', [l.id])).body.data.purged, 1);
+    assert.equal((await s.query('SELECT COUNT(*) n FROM chat_messages WHERE conversation_id = :id', { id: c.id }))[0].n, 0);
   });
 });
 

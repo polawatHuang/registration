@@ -58,7 +58,7 @@ function buildFilter({ q, status, sessionId, universityId, nationalIdHash }) {
   if (universityId) w.push('s.university_id = :universityId');
   if (q) {
     p.like = `%${q.replace(/[%_\\]/g, '\\$&')}%`;
-    w.push(`(a.full_name LIKE :like OR a.application_no LIKE :like OR a.mobile LIKE :like OR a.email LIKE :like OR a.shop_name LIKE :like ${nationalIdHash ? 'OR p.national_id_hash = :nationalIdHash' : ''})`);
+    w.push(`(a.full_name LIKE :like OR CONVERT(a.application_no USING utf8mb4) LIKE :like OR a.mobile LIKE :like OR a.email LIKE :like OR a.shop_name LIKE :like ${nationalIdHash ? 'OR p.national_id_hash = :nationalIdHash' : ''})`);
   }
   return { where: w.length ? `WHERE ${w.join(' AND ')}` : '', p };
 }

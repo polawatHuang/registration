@@ -5,6 +5,7 @@ import { withTransaction, query } from '../config/db.js';
 import { logger } from '../config/logger.js';
 import * as repo from '../repositories/retentionRepository.js';
 import * as apps from '../repositories/applicationRepository.js';
+import * as chatRepo from '../repositories/chatRepository.js';
 import { insertAudit } from '../repositories/auditRepository.js';
 import { confirmPassword } from './adminAuthService.js';
 import { getLegal } from './legalService.js';
@@ -14,9 +15,9 @@ import { keyedHash, randomCode } from '../utils/crypto.js';
 import { badRequest, conflict, notFound } from '../utils/errors.js';
 
 export const CONFIRM_TEXT = 'ลบถาวร';
-export const KINDS = ['withdrawn', 'documents', 'rejected', 'applications', 'line_users', 'logs'];
+export const KINDS = ['withdrawn', 'documents', 'rejected', 'applications', 'line_users', 'logs', 'chats'];
 /** ลบตามระยะเวลาได้เมื่อประกาศเผยแพร่แล้วเท่านั้น ยกเว้นการถอนความยินยอมซึ่งมีผลทันที */
-const FIELD = { documents: 'retention_documents', rejected: 'retention_rejected', applications: 'retention_applications', line_users: 'retention_rejected', logs: 'retention_logs' };
+const FIELD = { documents: 'retention_documents', rejected: 'retention_rejected', applications: 'retention_applications', line_users: 'retention_rejected', logs: 'retention_logs', chats: 'retention_chats' };
 const limitOf = (kind, legal) => (kind === 'withdrawn' ? 0 : legal.approved ? Number(legal.fields[FIELD[kind]]) : null);
 const appRef = (no) => keyedHash('purge_application', no);
 const lineRef = (lineUserId) => keyedHash('purge_line', lineUserId);
@@ -25,13 +26,14 @@ const REDO_REASON = 'ถอนความยินยอมข้อมูล�
 export async function summary() {
   const legal = await getLegal();
   const counts = {};
-  for (const k of KINDS) { const l = limitOf(k, legal); counts[k] = l === null ? null : await repo.countDue(k, l); }
+  for (const k of KINDS) { const l = limitOf(k, legal); counts[k] = l === null ? null : k === 'chats' ? await chatRepo.countOld(l) : await repo.countDue(k, l); }
   const r = await repo.countRequests();
-  return { ready: legal.approved, counts, due: KINDS.filter((k) => k !== 'logs').reduce((t, k) => t + (counts[k] ?? 0), 0), requests: { pending: Number(r.pending ?? 0), urgent: Number(r.urgent ?? 0) }, filesPending: (await repo.pendingFiles()).length };
+  return { ready: legal.approved, counts, due: KINDS.filter((k) => !['logs', 'chats'].includes(k)).reduce((t, k) => t + (counts[k] ?? 0), 0), requests: { pending: Number(r.pending ?? 0), urgent: Number(r.urgent ?? 0) }, filesPending: (await repo.pendingFiles()).length };
 }
 export async function due(kind, paging) {
   const limit = limitOf(kind, await getLegal());
   if (limit === null) return { items: [], total: 0 };
+  if (kind === 'chats') return { items: [], total: await chatRepo.countOld(limit) };
   const rows = await repo.listDue(kind, limit, paging);
   const mask = (n) => (n ? `${[...n].slice(0, 2).join('')}***` : '-');
   return { total: await repo.countDue(kind, limit), items: rows.map((r) => (kind === 'line_users' ? { id: r.id, label: mask(r.display_name), detail: r.last_interaction_at }
@@ -93,8 +95,8 @@ export async function purge({ kind, ids, password, confirm }, actor) {
   if (limit === null) throw conflict('RETENTION_NOT_READY', 'ต้องเผยแพร่ประกาศที่ระบุระยะเวลาเก็บข้อมูลก่อน');
   const result = { purged: 0, skipped: 0 };
   const reason = kind === 'withdrawn' ? 'withdrawal' : 'retention';
-  if (kind === 'logs') {
-    result.purged = await withTransaction(async (conn) => { const n = await repo.deleteLogs(limit, conn); if (n) await repo.insertPurgeLog({ kind, reason, count: n, adminId: actor.adminId }, conn); return n; });
+  if (['logs', 'chats'].includes(kind)) {
+    result.purged = await withTransaction(async (conn) => { const n = kind === 'chats' ? await chatRepo.deleteOld(limit, conn) : await repo.deleteLogs(limit, conn); if (n) await repo.insertPurgeLog({ kind, reason, count: n, adminId: actor.adminId }, conn); return n; });
   } else {
     if (!ids.length) throw badRequest('NO_SELECTION', 'กรุณาเลือกรายการ');
     // ทีละรายการ: รายการหนึ่งล้มเหลวไม่ทำให้รายการอื่นย้อนกลับ และข้ามรายการที่ไม่เข้าเงื่อนไขแล้ว

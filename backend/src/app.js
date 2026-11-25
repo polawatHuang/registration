@@ -23,7 +23,7 @@ export function createApp() {
   app.use(cookieParser());
   const json = express.json({ limit: '100kb' });
   // เส้นทางคลังความรู้รับข้อความยาว จึงใช้ parser ของตัวเองหลังตรวจสิทธิ์แล้ว
-  app.use('/api/v1', (req, res, next) => (req.path.startsWith('/ai/knowledge') ? next() : json(req, res, next)), api);
+  app.use('/api/v1', (req, res, next) => (req.path.startsWith('/ai/knowledge') || req.path === '/line/webhook' ? next() : json(req, res, next)), api);
   app.use(express.static(env.frontendPath, { dotfiles: 'deny', extensions: ['html'], maxAge: env.isProd ? '1h' : 0 }));
   app.use((_req, res) => res.status(404).sendFile('404.html', { root: env.frontendPath }));
   app.use(errorHandler);

@@ -3,7 +3,7 @@ import { fmtDateTime, h } from './ui.js';
 import { empty, failed, initAdmin, pager, skeleton } from './admin.js';
 
 const main = await initAdmin('audit-logs');
-const TYPES = [['', 'ทุกกิจกรรม'], ['auth.', 'เข้า/ออกระบบ'], ['application.', 'ใบสมัคร'], ['document.', 'เอกสาร'], ['line.', 'LINE'], ['session.', 'รุ่นอบรม'], ['university.', 'มหาวิทยาลัย'], ['option.', 'ตัวเลือก'], ['user.', 'ผู้ใช้'], ['settings.', 'ตั้งค่า'], ['integration.', 'API key'], ['email.', 'อีเมล'], ['knowledge.', 'คลังความรู้ AI'], ['legal.', 'กฎหมาย'], ['consent.', 'ความยินยอม'], ['retention.', 'ลบข้อมูล'], ['erasure.', 'คำขอลบ']];
+const TYPES = [['', 'ทุกกิจกรรม'], ['auth.', 'เข้า/ออกระบบ'], ['application.', 'ใบสมัคร'], ['document.', 'เอกสาร'], ['line.', 'LINE'], ['session.', 'รุ่นอบรม'], ['university.', 'มหาวิทยาลัย'], ['option.', 'ตัวเลือก'], ['user.', 'ผู้ใช้'], ['settings.', 'ตั้งค่า'], ['integration.', 'API key'], ['email.', 'อีเมล'], ['knowledge.', 'คลังความรู้ AI'], ['legal.', 'กฎหมาย'], ['consent.', 'ความยินยอม'], ['retention.', 'ลบข้อมูล'], ['erasure.', 'คำขอลบ'], ['chat.', 'แชต']];
 let page = 1;
 const list = h('div', { class: 'list' }); const foot = h('div', {});
 const type = h('select', { class: 'input', 'aria-label': 'ประเภทกิจกรรม', onchange: () => { page = 1; load(); } }, TYPES.map(([v, l]) => h('option', { value: v }, l)));

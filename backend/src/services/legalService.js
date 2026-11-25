@@ -5,11 +5,11 @@ import { sha256 } from '../utils/crypto.js';
 import { badRequest } from '../utils/errors.js';
 
 /** เพิ่มเลขนี้ทุกครั้งที่แก้ข้อความใน privacy.html หรือ policy.html เพื่อให้ผู้สมัครต้องอ่านใหม่ */
-const TEMPLATE = 'T2';
+const TEMPLATE = 'T3';
 export const LEGAL_FIELDS = {
   controller_name: { required: true }, controller_address: { required: true }, controller_contact: { required: true }, dpo_contact: {},
   basis_main: { required: true }, recipients: { required: true },
-  retention_applications: { required: true }, retention_documents: { required: true }, retention_rejected: { required: true }, retention_logs: { required: true },
+  retention_applications: { required: true }, retention_documents: { required: true }, retention_rejected: { required: true }, retention_logs: { required: true }, retention_chats: { required: true },
   refund_policy: { required: true }, copyright_owner: { required: true }, effective_date: { required: true }, approved: {},
 };
 const KEYS = Object.keys(LEGAL_FIELDS);

@@ -3,7 +3,7 @@ import { $, busy } from './ui.js';
 import { floatingLeaves } from './fx.js';
 
 floatingLeaves(12);
-const PAGES = ['dashboard', 'applications', 'catalog', 'ai-knowledge', 'users', 'audit-logs', 'settings', 'retention'];
+const PAGES = ['dashboard', 'applications', 'catalog', 'ai-knowledge', 'users', 'audit-logs', 'settings', 'retention', 'chat'];
 const wanted = new URLSearchParams(location.search).get('next');
 const next = `/admin/${PAGES.includes(wanted) ? wanted : 'dashboard'}.html`;
 get('/admin/auth/me').then(() => location.replace(next)).catch(() => {});

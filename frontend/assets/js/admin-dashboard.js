@@ -15,8 +15,8 @@ function lastDays(daily) {
 async function load() {
   main.replaceChildren(...skeleton(3, '130px'));
   let d;
-  let site; let ret = null;
-  try { [d, site] = await Promise.all([get('/admin/dashboard'), get('/catalog/site-info')]); if (can('retention.manage')) ret = await get('/admin/retention/summary'); } catch (e) { main.replaceChildren(failed(e, load)); return; }
+  let site; let ret = null; let chat = null;
+  try { [d, site] = await Promise.all([get('/admin/dashboard'), get('/catalog/site-info')]); if (can('retention.manage')) ret = await get('/admin/retention/summary'); if (can('chat.reply')) chat = (await get('/admin/chat/poll?filter=attention')).counts; } catch (e) { main.replaceChildren(failed(e, load)); return; }
   const n = (s) => d.statuses.find((x) => x.status === s)?.n ?? 0;
   const pending = n('submitted') + n('under_review');
   const kpi = (i, ic, c, label, value, href) => {
@@ -26,6 +26,7 @@ async function load() {
   };
   const line = h('canvas', { role: 'img', 'aria-label': 'กราฟผู้สมัคร 14 วันล่าสุด' }); const pie = h('canvas', { role: 'img', 'aria-label': 'สัดส่วนสถานะผู้สมัคร' });
   main.replaceChildren(...(site.legalApproved ? [] : [h('a', { class: 'legal-warn', href: '/admin/settings.html#legal' }, icon('exclamation-triangle-fill'), h('span', {}, 'ประกาศความเป็นส่วนตัวยังเป็นฉบับร่าง ต้องเผยแพร่ก่อนเปิดรับสมัครจริง'), icon('chevron-right'))]),
+    ...(chat && (chat.unread || chat.attention) ? [h('a', { class: 'legal-warn chat', href: '/admin/chat.html' }, icon('chat-dots-fill'), h('span', {}, `แชตยังไม่อ่าน ${num(chat.unread)} · ต้องการเจ้าหน้าที่ ${num(chat.attention)}`), icon('chevron-right'))] : []),
     ...(ret && (ret.due || ret.requests.pending) ? [h('a', { class: 'legal-warn', href: '/admin/retention.html' }, icon('trash3-fill'), h('span', {}, `ข้อมูลครบกำหนดลบ ${num(ret.due)} รายการ · คำขอลบรอพิจารณา ${num(ret.requests.pending)} รายการ${ret.requests.urgent ? ` (ใกล้ครบ 90 วัน ${num(ret.requests.urgent)})` : ''}`), icon('chevron-right'))] : []),
     h('section', { class: 'hero' }, h('h2', {}, `${hour < 12 ? 'สวัสดีตอนเช้า' : hour < 17 ? 'สวัสดีตอนบ่าย' : 'สวัสดีตอนเย็น'} คุณ${me.displayName}`), h('p', {}, pending ? `มีใบสมัครรอตรวจ ${num(pending)} ใบ` : 'ตรวจใบสมัครครบแล้ว ยอดเยี่ยม!'), h('img', { src: '/assets/images/leaf.svg', alt: '' })),
     h('section', { class: 'kpis' }, kpi(0, 'people-fill', purple, 'ผู้สมัครทั้งหมด', d.total, '/admin/applications.html'), kpi(1, 'calendar-plus-fill', green, 'สมัครวันนี้', d.today), kpi(2, 'hourglass-split', '#f5821f', 'รอตรวจเอกสาร', pending, '/admin/applications.html?status=submitted'), kpi(3, 'exclamation-diamond-fill', '#c92a3a', 'รอผู้สมัครแก้', n('documents_incomplete'), '/admin/applications.html?status=documents_incomplete'),

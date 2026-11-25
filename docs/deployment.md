@@ -19,13 +19,13 @@
 > **สำคัญ:** เก็บ `DATA_ENCRYPTION_KEY` และ `DATA_HASH_KEY` สำรองแยกจากฐานข้อมูล ถ้าหาย เลขบัตร เอกสาร และ API key จะถอดรหัสไม่ได้ถาวร ถ้าเปลี่ยน `DATA_HASH_KEY` จะค้นเลขบัตรเดิมไม่เจอ
 
 ## 3. สร้างตารางและผู้ดูแล (Run script หรือ SSH)
-`db:migrate` → `db:seed` → `knowledge:import` แล้วสร้าง Super Admin:
+`db:migrate` (อัปเดตสิทธิ์ให้ด้วย ต้องรันทุกครั้งที่อัปเดตโค้ด) → `knowledge:import` แล้วสร้าง Super Admin:
 ```bash
 ADMIN_PASSWORD='ตั้งรหัสอย่างน้อย12ตัว' npm run admin:create -- ชื่อผู้ใช้ "ชื่อที่แสดง"
 ```
 ถ้าไม่มี SSH ให้ขอผู้ให้บริการรันให้ จากนั้นเปลี่ยนรหัสผ่านที่หน้าผู้ใช้ทันที
 
-## 4. งานตั้งเวลา (จำเป็น: ส่งอีเมลซ้ำและล้าง session)
+## 4. งานตั้งเวลา (จำเป็น: ส่งอีเมลซ้ำ ประมวลผลแชตค้าง และล้าง session)
 Scheduled Tasks ทุก 5 นาที:
 ```bash
 curl -fsS -X POST -H "X-Jobs-Secret: ค่าใน.env" https://โดเมน/api/v1/internal/jobs/run

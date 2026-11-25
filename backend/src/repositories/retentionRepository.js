@@ -1,4 +1,5 @@
 import { query, queryOne } from '../config/db.js';
+import { deleteForLineUser } from './chatRepository.js';
 
 const APP = `SELECT a.id, a.application_no, a.full_name, a.status, a.session_id, s.session_name, s.ends_at, u.name AS university_name
   FROM applications a JOIN training_sessions s ON s.id = a.session_id JOIN universities u ON u.id = s.university_id`;
@@ -70,6 +71,7 @@ export async function deleteApplication(app, conn) {
   }
 }
 export async function deleteLineUser(id, conn) {
+  await deleteForLineUser(id, conn);
   for (const sql of ['DELETE FROM applicant_sessions WHERE line_user_id = :id', 'DELETE FROM line_account_links WHERE line_user_id = :id',
     "UPDATE admin_audit_logs SET metadata_json = NULL, ip_address = NULL WHERE entity_type = 'line_user' AND entity_id = CAST(:id AS CHAR)", 'DELETE FROM line_users WHERE id = :id']) await query(sql, { id }, conn);
 }

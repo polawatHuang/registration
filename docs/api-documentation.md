@@ -37,5 +37,15 @@
 ## AI (`/ai`, สิทธิ์ ai.manage)
 `GET/POST /knowledge` · `GET/PUT/DELETE /knowledge/:id` · `POST /documents` (อัปโหลด) · `POST /chat` (ทดสอบถาม)
 
+## แชต (`/admin/chat`)
+| Endpoint | สิทธิ์ |
+|---|---|
+| `GET /state`, `GET /poll`, `GET /:id`, `GET /:id/messages` | chat.reply |
+| `POST /:id/messages` (text, clientId), `POST /:id/messages/:mid/retry`, `GET …/media` | chat.reply |
+| `POST /:id/update` (aiMode, status, assign, readUpTo, attention), `POST /:id/suggest` | chat.reply |
+| `PUT /ai` เปิด/ปิด AI ทั้งระบบ | chat.manage |
+
+`POST /line/webhook` ตรวจ `x-line-signature` จาก raw body
+
 ## งานตั้งเวลา
 `POST /internal/jobs/run` พร้อม header `X-Jobs-Secret`

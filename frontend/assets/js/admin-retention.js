@@ -9,6 +9,7 @@ const KIND = {
   rejected: ['ใบที่ไม่ผ่าน/ยกเลิก', 'ลบใบสมัคร เอกสาร และข้อมูลบุคคลที่ไม่มีใบอื่นเหลือ'],
   applications: ['ใบสมัครครบกำหนด', 'ลบใบสมัคร เอกสาร และข้อมูลบุคคลที่ไม่มีใบอื่นเหลือ'],
   line_users: ['บัญชี LINE ที่ไม่ใช้', 'ลบชื่อ รูป และรหัส LINE ของผู้ที่ไม่มีใบสมัคร'],
+  chats: ['ข้อความแชตเก่า', 'ลบข้อความและรูปในแชตที่เกินระยะเวลาเก็บ ครั้งละไม่เกิน 5,000 ข้อความ'],
   logs: ['บันทึกการใช้งาน', 'ลบ Audit Log ที่เกินระยะเวลาเก็บ'],
 };
 const REASON = { retention: 'ครบกำหนด', request: 'ตามคำขอ', withdrawal: 'ถอนความยินยอม', restore: 'ลบซ้ำหลังกู้คืน' };
@@ -25,8 +26,9 @@ async function dueView() {
     toast(`ลบแล้ว ${num(r.purged)} รายการ${r.skipped ? ` ข้าม ${num(r.skipped)} รายการที่ไม่เข้าเงื่อนไขแล้ว` : ''}`);
     page = 1; load();
   } });
-  if (kind === 'logs') {
-    box.append(sum.counts.logs ? h('button', { class: 'btn btn-danger', type: 'button', onclick: () => run([], `ลบบันทึก ${num(sum.counts.logs)} รายการ? กู้คืนไม่ได้`) }, icon('trash3-fill'), `ลบบันทึก ${num(sum.counts.logs)} รายการ`) : empty('check2-circle', 'ไม่มีรายการครบกำหนด'));
+  if (['logs', 'chats'].includes(kind)) {
+    const n = sum.counts[kind];
+    box.append(n ? h('button', { class: 'btn btn-danger', type: 'button', onclick: () => run([], `${KIND[kind][0]}: ลบ ${num(n)} รายการ? กู้คืนไม่ได้`) }, icon('trash3-fill'), `ลบ ${num(n)} รายการ`) : empty('check2-circle', 'ไม่มีรายการครบกำหนด'));
     return [cards, box];
   }
   const { data, meta } = await api(`/admin/retention/due/${kind}?page=${page}`);

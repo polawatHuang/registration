@@ -4,4 +4,7 @@
 2. LINE Login > Callback URL: คัดลอกจาก Admin > ตั้งค่า
 3. ใส่ Channel ID / secret ที่ Admin > ตั้งค่า > LINE Login แล้วเปลี่ยน channel เป็น Published
 4. ต้องการให้ชวนเพิ่มเพื่อน OA ตอนล็อกอิน ให้ผูก OA ที่ LINE Login > Linked LINE Official Account
-5. Messaging API / LIFF ใส่เตรียมไว้ได้ แต่ webhook จะเปิดในรอบ 2 อย่าเพิ่งตั้ง Webhook URL
+5. Messaging API: ใส่ Channel secret และ Channel access token ที่ Admin > ตั้งค่า แล้วกดทดสอบ
+6. LINE Developers > Messaging API: วาง Webhook URL จากหน้าตั้งค่า กด Verify (ต้องได้ Success) เปิด **Use webhook** และเปิด **Webhook redelivery**
+7. LINE Official Account Manager > การตอบกลับ: **ปิด** ข้อความตอบกลับอัตโนมัติและข้อความทักทาย (ระบบนี้ส่งให้แล้ว) ไม่เช่นนั้นลูกค้าจะได้ข้อความซ้ำ
+8. LIFF ใช้ในรอบถัดไป

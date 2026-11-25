@@ -46,7 +46,8 @@ export function chunkText(text, size = 900) {
     if (cur && cur.length + p.length > size) { chunks.push(cur.trim()); cur = ''; }
     cur += `${p}\n\n`;
   }
-  if (cur.trim()) chunks.push(cur.trim());
+  // เศษท้ายสั้นๆ ที่ไม่มีบริบทจะชนะการค้นหาเพราะสั้น จึงรวมกับก้อนก่อนหน้า
+  if (cur.trim()) { if (cur.length < 250 && chunks.length) chunks[chunks.length - 1] += `\n\n${cur.trim()}`; else chunks.push(cur.trim()); }
   return chunks;
 }
 
@@ -57,24 +58,22 @@ export function tokenize(text) {
 }
 /** BM25 ในหน่วยความจำ: ภาษาไทยไม่มีช่องว่าง และ FULLTEXT ngram มีเฉพาะ MySQL (MariaDB ไม่มี) */
 export function buildIndex(chunks) {
-  // หัวข้อและคำค้นบอกเรื่องของเนื้อหาชัดกว่าตัวเนื้อความ จึงให้น้ำหนักมากกว่า และไม่นับเป็นความยาว
+  // หัวข้อและคำค้นบอกเรื่องของเนื้อหาชัดกว่าตัวเนื้อความ จึงให้คะแนนแยก ไม่ถูกหารด้วยความยาว
   const docs = chunks.map((c) => {
     const tf = new Map();
-    const add = (text, weight) => { const t = tokenize(text); for (const w of t) tf.set(w, (tf.get(w) ?? 0) + weight); return t.length; };
-    const len = add(c.text, 1);
-    add(c.title, 4);
-    add(c.keywords ?? '', 4);
-    return { c, tf, len };
+    const words = tokenize(c.text);
+    for (const w of words) tf.set(w, (tf.get(w) ?? 0) + 1);
+    return { c, tf, title: new Set(tokenize(c.title)), keys: new Set(tokenize(c.keywords ?? '')), len: words.length };
   });
   const df = new Map();
-  for (const d of docs) for (const w of d.tf.keys()) df.set(w, (df.get(w) ?? 0) + 1);
+  for (const d of docs) for (const w of new Set([...d.tf.keys(), ...d.title, ...d.keys])) df.set(w, (df.get(w) ?? 0) + 1);
   const avg = docs.reduce((s, d) => s + d.len, 0) / (docs.length || 1);
   const idf = (w) => Math.log(1 + (docs.length - (df.get(w) ?? 0) + 0.5) / ((df.get(w) ?? 0) + 0.5));
   return (question, limit = 6) => {
     const words = [...new Set(tokenize(question))];
     return docs.map((d) => {
       let score = 0;
-      for (const w of words) { const f = d.tf.get(w); if (f) score += idf(w) * ((f * 2.2) / (f + 1.2 * (0.25 + 0.75 * (d.len / avg)))); }
+      for (const w of words) { const f = d.tf.get(w); if (f) score += idf(w) * ((f * 2.2) / (f + 1.2 * (0.25 + 0.75 * (d.len / avg)))); if (d.title.has(w)) score += idf(w) * 1.5; if (d.keys.has(w)) score += idf(w) * 2.5; }
       return { ...d.c, score: score ? score * (1 + Math.max(-5, Math.min(5, d.c.priority ?? 0)) * 0.05) : 0 };
     }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score).slice(0, limit);
   };

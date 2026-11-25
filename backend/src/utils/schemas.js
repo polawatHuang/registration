@@ -5,6 +5,7 @@ import { isValidThaiId, toAsciiDigits } from './thai.js';
 const clean = (v) => (typeof v === 'string' ? v.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/g, '').trim() : v);
 export const text = (max, min = 1) => z.preprocess(clean, z.string().min(min, 'กรุณากรอกข้อมูล').max(max, `ยาวได้ไม่เกิน ${max} ตัวอักษร`));
 export const optionalText = (max) => z.preprocess((v) => clean(v) || null, z.string().max(max, `ยาวได้ไม่เกิน ${max} ตัวอักษร`).nullable());
+const filter = (schema) => z.preprocess((v) => (v === '' ? undefined : v), schema.optional());
 const digits = (v) => (typeof v === 'string' ? toAsciiDigits(v).replace(/[\s-]/g, '') : v);
 export const id = z.coerce.number().int().positive('กรุณาเลือก').max(4294967295);
 
@@ -53,17 +54,22 @@ export const settingsSchema = z.object({
   announcement: optionalText(500), payment_instructions: optionalText(1000), contact_phone: optionalText(50), contact_email: optionalText(200), contact_line_url: httpsUrl(300),
 }).strict();
 const optInt = (min, max) => z.preprocess((v) => (v === '' || v === undefined ? null : v), z.coerce.number().int('ต้องเป็นจำนวนเต็ม').min(min, `ต้องไม่น้อยกว่า ${min}`).max(max, `ต้องไม่เกิน ${max}`).nullable());
-export const purgeSchema = z.object({ kind: z.enum(['withdrawn', 'documents', 'rejected', 'applications', 'line_users', 'logs']), ids: z.array(id).max(200, 'เลือกได้ครั้งละไม่เกิน 200').default([]), password: z.string().min(1).max(200), confirm: z.string().max(50) });
-export const dueKind = z.enum(['withdrawn', 'documents', 'rejected', 'applications', 'line_users', 'logs']);
+export const purgeSchema = z.object({ kind: z.enum(['withdrawn', 'documents', 'rejected', 'applications', 'line_users', 'logs', 'chats']), ids: z.array(id).max(200, 'เลือกได้ครั้งละไม่เกิน 200').default([]), password: z.string().min(1).max(200), confirm: z.string().max(50) });
+export const dueKind = z.enum(['withdrawn', 'documents', 'rejected', 'applications', 'line_users', 'logs', 'chats']);
 export const decideSchema = z.object({ decision: z.enum(['approved', 'rejected']), reason: optionalText(500), password: z.string().min(1, 'กรุณายืนยันรหัสผ่าน').max(200), confirm: z.string().max(50).default('') });
 export const noticeSchema = z.object({ action: z.enum(['retry', 'done']) });
 export const holdSchema = z.object({ reason: optionalText(500) });
 export const erasureSchema = z.object({ note: optionalText(500) });
 export const pageSchema = z.object({ page: z.coerce.number().int().min(1).max(100000).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25) });
+export const chatAiSchema = z.object({ enabled: z.boolean() });
+export const chatPollSchema = z.object({ filter: z.enum(['all', 'unread', 'attention', 'mine', 'closed']).default('all'), q: filter(z.string().max(100)), open: filter(id), after: z.coerce.number().int().min(0).default(0), since: z.coerce.number().int().min(0).default(0), rev: z.string().max(80).default(''), offset: z.coerce.number().int().min(0).max(100000).default(0) });
+export const chatBeforeSchema = z.object({ before: filter(id) });
+export const chatSendSchema = z.object({ text: text(4900), clientId: z.uuid() });
+export const chatUpdateSchema = z.object({ aiMode: z.enum(['auto', 'off']).optional(), status: z.enum(['open', 'closed']).optional(), assign: z.boolean().optional(), attention: z.literal(false).optional(), readUpTo: z.number().int().min(0).optional() }).strict();
 export const legalSchema = z.object({
   controller_name: optionalText(200), controller_address: optionalText(500), controller_contact: optionalText(300), dpo_contact: optionalText(500),
   basis_main: z.preprocess((v) => v || null, z.enum(['contract', 'public_task']).nullable()), recipients: optionalText(1000),
-  retention_applications: optInt(1, 1200), retention_documents: optInt(1, 1200), retention_rejected: optInt(1, 1200), retention_logs: optInt(90, 3650),
+  retention_applications: optInt(1, 1200), retention_documents: optInt(1, 1200), retention_rejected: optInt(1, 1200), retention_logs: optInt(90, 3650), retention_chats: optInt(1, 120),
   refund_policy: optionalText(2000), copyright_owner: optionalText(200), effective_date: z.preprocess((v) => v || null, z.iso.date('วันที่ไม่ถูกต้อง').nullable()), approved: z.boolean().default(false),
 }).strict();
 export const integrationsSchema = z.object({
@@ -78,6 +84,5 @@ export const reviewSchema = z.object({ decision: z.enum(['approved', 'rejected']
   .refine((v) => v.decision === 'approved' || v.reason, { path: ['reason'], message: 'กรุณาระบุเหตุผล' });
 export const statusSchema = z.object({ status: z.string().max(30), expectedStatus: z.string().max(30), reason: optionalText(500) });
 const page = { page: z.coerce.number().int().min(1).max(100000).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(20) };
-const filter = (schema) => z.preprocess((v) => (v === '' ? undefined : v), schema.optional());
 export const listSchema = z.object({ ...page, q: filter(z.string().max(100)), status: filter(z.string().max(30)), sessionId: filter(id), universityId: filter(id) });
 export const auditSchema = z.object({ ...page, action: filter(z.string().max(80)), adminId: filter(id) });
