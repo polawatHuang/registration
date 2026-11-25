@@ -236,7 +236,7 @@ async function run() {
 document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
 addEventListener('hashchange', () => { const id = Number(location.hash.slice(1)); if (id) openChat(id); });
 
-main.append(bar, h('div', { class: 'cgrid' }, left, right));
+main.replaceChildren(bar, h('div', { class: 'cgrid' }, left, right));
 paintSound(); paintChips(); listEl.replaceChildren(...skeleton(5, '72px'));
 if (reduced()) orb.classList.add('still');
 async function loadState() {

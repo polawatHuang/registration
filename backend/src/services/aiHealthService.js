@@ -1,5 +1,6 @@
 import { query, queryOne, withTransaction } from '../config/db.js';
 import { logger } from '../config/logger.js';
+import { track } from '../utils/background.js';
 import { BLOCKING } from '../config/minimaxErrors.js';
 import { insertEvent } from '../repositories/notificationRepository.js';
 
@@ -28,7 +29,7 @@ const iso = (ms = Date.now()) => new Date(ms).toISOString();
 /** ผู้ฟังลงทะเบียนเอง (แจ้งอีเมล/LINE) เพื่อไม่ให้ service อ้างกันวน */
 let onChange = () => {};
 export const setHealthListener = (fn) => { onChange = fn; };
-const announce = (r) => { if (r.changed) Promise.resolve(onChange(r)).catch((err) => logger.error({ err: { message: err.message } }, 'ai health listener failed')); };
+const announce = (r) => { if (r.changed) track(Promise.resolve(onChange(r))).catch((err) => logger.error({ err: { message: err.message } }, 'ai health listener failed')); };
 
 export async function reportOk() {
   const h = await health();

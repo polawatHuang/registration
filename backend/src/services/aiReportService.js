@@ -60,7 +60,7 @@ function group(rows, limit) {
 /** ประมาณการ: บาง model ไม่แยก token เข้า/ออก ส่วนนั้นคิดด้วยราคาขาเข้า */
 const cost = (_s, r) => (r.cost === null ? null : Number(r.cost));
 export async function report(days = 30) {
-  const [settings, month, daily, modes, open, all] = [await aiSettings(), await repo.monthSums(), await repo.daily(days), await repo.modes(days), await repo.recent({ days, unanswered: true, limit: 2000 }), await repo.recent({ days, line: true, limit: 3000 })];
+  const [settings, month, daily, modes, open, all] = [await aiSettings(), await repo.monthSums(), await repo.daily(days), await repo.modes(days), await repo.recent({ days, unanswered: true, limit: 1000 }), await repo.recent({ days, line: true, limit: 1500 })];
   return {
     settings, model: await currentModel(), price: await prices(), month: { tokens: Number(month.total), cost: cost(settings, month), interactions: Number(month.n), conversations: Number(month.conversations), avgMs: Math.round(Number(month.avg_ms)) },
     daily: daily.map((d) => ({ day: d.day, n: Number(d.n), tokens: Number(d.tokens), cost: cost(settings, d), unanswered: Number(d.unanswered) })), modes: Object.fromEntries(modes.map((m) => [m.mode, Number(m.n)])),
@@ -71,4 +71,4 @@ export const history = async () => (await repo.recent({ days: 30, limit: 200 }))
 export async function resolve(ids, { adminId, ip }) {
   await withTransaction(async (conn) => { const n = await repo.resolve(ids, adminId, conn); await insertAudit({ adminId, action: 'ai.resolve', entityType: 'ai', ip, metadata: { n } }, conn); });
 }
-export async function summary() { const [settings, m, d, all] = [await aiSettings(), await repo.monthSums(), await repo.daily(14), await repo.recent({ days: 30, line: true, limit: 3000 })]; return { conversations: Number(m.conversations), tokens: Number(m.total), cost: cost(settings, m), currency: (await prices()).currency, daily: d.map((x) => ({ day: x.day, n: Number(x.n), tokens: Number(x.tokens), cost: cost(settings, x) })), frequent: group(all, 6).map(({ question, count }) => ({ question, count })) }; }
+export async function summary() { const [settings, m, d, all] = [await aiSettings(), await repo.monthSums(), await repo.daily(14), await repo.recent({ days: 30, line: true, limit: 1000 })]; return { conversations: Number(m.conversations), tokens: Number(m.total), cost: cost(settings, m), currency: (await prices()).currency, daily: d.map((x) => ({ day: x.day, n: Number(x.n), tokens: Number(x.tokens), cost: cost(settings, x) })), frequent: group(all, 6).map(({ question, count }) => ({ question, count })) }; }

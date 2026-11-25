@@ -157,14 +157,23 @@ try { remembered = sessionStorage.getItem('me-view'); sessionStorage.removeItem(
 const asked = params.get('view');
 view = VIEWS[asked] ? asked : VIEWS[remembered] ? remembered : 'home';
 shell = await initShell('me');
-if (shell.site?.liffId && wantsLiff) {
+/** LINE ตอบช้าหรือโหลด SDK ไม่ได้ ต้องไม่ขวางหน้า: รอไม่เกิน 5 วินาทีแล้วใช้ปุ่มล็อกอินปกติแทน */
+async function connectLiff() {
+  const limit = new Promise((_r, reject) => { setTimeout(() => reject(new Error('LIFF ตอบช้า')), 5000); });
   try {
-    liff = await startLiff(shell.site.liffId);
+    liff = await Promise.race([startLiff(shell.site.liffId), limit]);
     const after = new URLSearchParams(location.search).get('view'); // liff.init คืน query จริงจาก liff.state
     if (VIEWS[after]) view = after;
-    await liffSignIn();
-    shell.session = await get('/auth/session');
+    await Promise.race([liffSignIn(), limit]);
   } catch (e) { console.warn('LIFF', e?.message); }
+}
+if (shell.site?.liffId && wantsLiff) {
+  if (shell.session.authenticated && shell.session.line) connectLiff(); // เข้าอยู่แล้ว แสดงหน้าได้เลย
+  else {
+    root.replaceChildren(h('section', { class: 'panel state' }, h('span', { class: 'spin big' }), h('p', {}, 'กำลังเชื่อมต่อกับ LINE…')));
+    await connectLiff();
+    shell.session = await get('/auth/session').catch(() => shell.session);
+  }
 }
 if (!shell.session.authenticated) { try { sessionStorage.setItem('me-view', view); } catch { /* ปิด storage */ } }
 await load();

@@ -32,7 +32,7 @@ ADMIN_PASSWORD='ตั้งรหัสอย่างน้อย12ตัว' 
 ไม่มี SSH: เพิ่ม `ADMIN_USERNAME`, `ADMIN_NAME`, `ADMIN_PASSWORD` ใน `.env` ชั่วคราว → Run script `admin:create` ใน Plesk → **ลบทั้ง 3 บรรทัดทันที** แล้วเปลี่ยนรหัสผ่านที่หน้าผู้ใช้
 
 ## 4. งานตั้งเวลา (จำเป็น: ส่งอีเมลซ้ำ ประมวลผลแชตค้าง เตือนก่อนอบรม ส่งแจ้งเตือนซ้ำ และล้าง session)
-แอปรันงานเองทุก 5 นาที (`JOBS_IN_APP=1`) แต่ Passenger อาจปิดโปรเซสเมื่อไม่มีคนใช้ จึงต้องมีตัวปลุก เลือกแบบใดแบบหนึ่ง:
+แอปรันงานเมื่อถึงรอบ (ราว 4 นาที) ตอนเปิดแอปและตอนมีคนเรียก `/api/v1/health` ซึ่งรองานจบก่อนตอบ โฮสต์ปิดโปรเซสเร็วเมื่อว่าง จึงต้องมีตัวปลุก เลือกแบบใดแบบหนึ่ง:
 
 **แบบแนะนำ ไม่มี secret:** Scheduled Task ชนิด **Fetch a URL** ทุก 5 นาที ไปที่ `https://โดเมน/api/v1/health`
 
@@ -45,6 +45,13 @@ curl -fsS -m 240 -o /dev/null -X POST -H "X-Jobs-Secret: ค่าใน.env" ht
 ถ้าล้มเหลว เปลี่ยนชั่วคราวเป็น `curl -sS -m 240 -w "\nHTTP %{http_code}\n" …` (ไม่มี `-f` และ `-o`) เพื่อดูว่างานใดล้มเพราะอะไร:
 - 403 = secret ไม่ตรง หรือยังไม่ Restart App หลังแก้ `.env`
 - 500 `ER_NO_SUCH_TABLE`/`ER_BAD_FIELD_ERROR` = รัน `db:migrate` ไม่ครบ · `EACCES`/`EROFS`/`EPERM` = `STORAGE_PATH` เขียนไม่ได้
+
+## 4.1 ความเร็ว
+วัดเมื่อ 25 พ.ย. 2569: โฮสต์นี้ปิดแอปเมื่อว่างเพียง 4–10 วินาที (ค่าปกติของ Passenger คือ 5 นาที) คำขอแรกหลังว่างจึงรอแอปเปิดใหม่ แจ้งผู้ให้บริการ: **ตั้ง `PassengerMinInstances 1` หรือเพิ่ม `PassengerPoolIdleTime` เป็น 300 วินาทีให้ register.cipacmeeting.com**
+- ระบบลดเวลาเปิดแอปด้วยแคชโค้ดที่คอมไพล์แล้วใน `tmp/compile-cache` (ลบได้ สร้างใหม่เอง) และโหลดไลบรารีใหญ่เมื่อใช้
+- ก่อนปิดโปรเซส ระบบรองานเบื้องหลังจบสูงสุด 50 วินาที
+- `frontend/.htaccess` คุมแคชและ security headers ถ้าเว็บขึ้น 500 หลังอัปเดต ให้ลบไฟล์นี้แล้วใช้ nginx directives ข้อ 5 แทน
+- วัดเอง: `npm run test:perf` (API กับข้อมูลมาก) · แก้ import ในหน้าแล้วรัน `npm run pages`
 
 ## 5. Security headers
 nginx ของ Plesk อาจส่งไฟล์ใน `frontend` เองโดยไม่ผ่าน Node ให้เพิ่มใน Additional nginx directives:

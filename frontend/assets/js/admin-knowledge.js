@@ -1,6 +1,6 @@
 import { get, send, upload } from './api.js';
 import { confirmDialog, fmtDateTime, h, icon, num, toast } from './ui.js';
-import { empty, failed, formDialog, initAdmin, skeleton } from './admin.js';
+import { empty, failed, formDialog, initAdmin, markNav, skeleton } from './admin.js';
 import { creditView, historyView, reportView, settingsView } from './ai-report.js';
 
 const main = await initAdmin('ai-knowledge');
@@ -59,11 +59,11 @@ function testView() {
   } }, q, btn))];
 }
 function render() {
-  main.replaceChildren(h('div', { class: 'tabs', role: 'tablist' }, [['list', 'คลังความรู้'], ['test', 'ทดสอบถาม AI'], ['credit', 'เครดิต AI'], ['report', 'รายงานและค่าใช้จ่าย'], ['history', 'ประวัติการถาม'], ['settings', 'ตั้งค่า AI']].map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === tab), onclick: () => { tab = k; history.replaceState(null, '', `#${k}`); render(); } }, l))), ...({ list: listView, test: testView, credit: creditView, report: () => reportView((question) => edit(null, { title: question, keywords: question.slice(0, 200) })), history: historyView, settings: settingsView })[tab]());
+  main.replaceChildren(h('div', { class: 'tabs', role: 'tablist' }, [['list', 'คลังความรู้'], ['test', 'ทดสอบถาม AI'], ['credit', 'เครดิต AI'], ['report', 'รายงานและค่าใช้จ่าย'], ['history', 'ประวัติการถาม'], ['settings', 'ตั้งค่า AI']].map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === tab), onclick: () => { tab = k; history.replaceState(null, '', `#${k}`); markNav(); render(); } }, l))), ...({ list: listView, test: testView, credit: creditView, report: () => reportView((question) => edit(null, { title: question, keywords: question.slice(0, 200) })), history: historyView, settings: settingsView })[tab]());
 }
 async function load() {
   if (!data) main.replaceChildren(...skeleton());
   try { data = await get('/ai/knowledge'); render(); } catch (e) { main.replaceChildren(failed(e, load)); }
 }
 load();
-addEventListener('hashchange', () => { const t = location.hash.slice(1); if (t && t !== tab && data) { tab = t; render(); } });
+addEventListener('hashchange', () => { const t = location.hash.slice(1) || 'list'; if (t !== tab && data) { tab = t; render(); } });

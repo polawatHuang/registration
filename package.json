@@ -21,7 +21,9 @@
     "keys:generate": "node backend/scripts/generate-keys.js",
     "knowledge:import": "node backend/scripts/import-knowledge.js",
     "retention:reapply": "node backend/scripts/retention-reapply.js",
+    "pages": "node backend/scripts/stamp-pages.js",
     "vendor": "node backend/scripts/copy-vendor.js",
+    "test:perf": "node backend/scripts/perf-pages.js",
     "test:load": "node backend/scripts/load-test.js",
     "test": "node --test --test-concurrency=1 backend/tests/*.test.js"
   },

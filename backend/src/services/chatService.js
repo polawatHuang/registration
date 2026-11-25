@@ -14,6 +14,7 @@ import { command, kick as notify } from './notificationService.js';
 import { insertEvent } from '../repositories/notificationRepository.js';
 import { CONTACT_DATA, viewUrl, WELCOME_KEYS } from './richMenuService.js';
 import { adminMessage, aiMessage, contactMessage, HANDOFF, HUMAN_TEXT, welcome } from './chatTemplates.js';
+import { track } from '../utils/background.js';
 import { readDocument, storeDocument } from './storageService.js';
 import { flushFiles } from './retentionService.js';
 import { env } from '../config/env.js';
@@ -51,8 +52,8 @@ export async function receive(rawBody, signature) {
 let running = null; let again = false;
 export function kickEvents() {
   if (running) { again = true; return running; }
-  running = (async () => { do { again = false; await processEvents(); } while (again); })()
-    .catch((err) => logger.error({ err: { message: err.message } }, 'webhook processing failed')).finally(() => { running = null; });
+  running = track((async () => { do { again = false; await processEvents(); } while (again); })()
+    .catch((err) => logger.error({ err: { message: err.message } }, 'webhook processing failed')).finally(() => { running = null; }));
   return running;
 }
 export async function processEvents(limit = 40) {
@@ -239,7 +240,7 @@ const PAGE = 40;
 
 export async function state() {
   const [enabled, aiReady, lineReady, h] = await Promise.all([aiEnabled(), isConfigured(), line.isReady(), health()]);
-  return { aiEnabled: enabled, aiReady, aiHealth: { status: h.status, text: h.status === 'ok' ? null : KIND_TEXT[h.kind] ?? 'AI ขัดข้อง' }, lineReady, quota: lineReady ? await line.quota() : null, webhookUrl: env.lineWebhookUrl };
+  return { aiEnabled: enabled, aiReady, aiHealth: { status: h.status, text: h.status === 'ok' ? null : KIND_TEXT[h.kind] ?? 'AI ขัดข้อง' }, lineReady, quota: lineReady ? await line.quotaForView() : null, webhookUrl: env.lineWebhookUrl };
 }
 export async function poll({ filter, q, open, after, since, rev, offset }, adminId) {
   const now = await repo.serverNow();

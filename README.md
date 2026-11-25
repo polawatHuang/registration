@@ -29,4 +29,4 @@ npm run test:load
 ```
 
 ## เอกสาร
-[สถาปัตยกรรม](docs/architecture.md) · [ฐานข้อมูล](docs/database.md) · [API](docs/api-documentation.md) · [User journey](docs/user-journey.md) · [ติดตั้งบน Plesk](docs/deployment.md) · [ตั้งค่า LINE](docs/line-setup.md) · [แจ้งเตือน](docs/notifications.md) · [รวมแชต](docs/chat.md) · [AI และคลังความรู้](docs/ai-setup.md) · [การลบข้อมูล](docs/data-retention.md) · [คู่มือผู้ใช้](docs/user-manual.md) · [รายการตรวจเครื่องจริง](docs/device-checklist.md) · [รายงานทดสอบ](docs/test-report.md)
+[สถาปัตยกรรม](docs/architecture.md) · [ฐานข้อมูล](docs/database.md) · [API](docs/api-documentation.md) · [User journey](docs/user-journey.md) · [ติดตั้งบน Plesk](docs/deployment.md) · [ตั้งค่า LINE](docs/line-setup.md) · [แจ้งเตือน](docs/notifications.md) · [รวมแชต](docs/chat.md) · [AI และคลังความรู้](docs/ai-setup.md) · [การลบข้อมูล](docs/data-retention.md) · [คู่มือผู้ใช้](docs/user-manual.md) · [รายการตรวจเครื่องจริง](docs/device-checklist.md) · [SEO](docs/seo.md) · [รายงานทดสอบ](docs/test-report.md)

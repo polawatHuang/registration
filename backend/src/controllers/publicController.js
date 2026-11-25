@@ -1,6 +1,7 @@
 import { env } from '../config/env.js';
 import { query } from '../config/db.js';
 import { runJobs } from '../jobs/index.js';
+import { runDue } from '../jobs/scheduler.js';
 import * as catalog from '../services/catalogService.js';
 import * as apps from '../services/applicationService.js';
 import { getLegal } from '../services/legalService.js';
@@ -18,8 +19,10 @@ import { AppError, forbidden } from '../utils/errors.js';
 import { safeEqual } from '../utils/crypto.js';
 import { ok } from '../utils/response.js';
 
+/** ตัวปลุกของโฮสต์ (Fetch a URL) เรียกที่นี่: ถึงรอบก็รันงานให้จบก่อนตอบ เพราะโฮสต์ปิดโปรเซสที่ไม่มีคำขอค้าง */
 export async function health(_req, res) {
   await query('SELECT 1');
+  if (env.JOBS_IN_APP) await Promise.race([runDue(), new Promise((r) => { setTimeout(r, 20_000).unref(); })]);
   ok(res, { status: 'ok', time: new Date().toISOString() });
 }
 export async function jobs(req, res) {

@@ -1,5 +1,5 @@
 import { get, send } from './api.js';
-import { fmtDateTime, h, icon, num, reduced, toast } from './ui.js';
+import { fmtDateTime, h, icon, loadChart, num, reduced, toast } from './ui.js';
 import { empty, failed, formDialog, skeleton } from './admin.js';
 
 export const money = (v, c) => (v === null ? '—' : new Intl.NumberFormat('th-TH', { style: 'currency', currency: c, maximumFractionDigits: v < 1 ? 4 : 2 }).format(v));
@@ -7,9 +7,9 @@ const MODE = { answer: ['ok', 'ตอบได้'], faq: ['ok', 'ตอบจ�
 const CHANNEL = { line: 'LINE', suggest: 'ช่วยร่าง', test: 'ทดสอบ' };
 const days14 = (list, pick) => { const m = new Map(list.map((d) => [d.day, pick(d)])); return Array.from({ length: 14 }, (_, i) => { const day = new Date(Date.now() + 7 * 3_600_000 - (13 - i) * 86_400_000).toISOString().slice(0, 10); return { day, v: m.get(day) ?? 0 }; }); };
 const label = (day) => new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(day));
-export function barChart(canvas, series, { color = '#6a4fc0', name }) {
-  const { Chart } = window;
-  if (!Chart) return;
+export async function barChart(canvas, series, { color = '#6a4fc0', name }) {
+  const Chart = await loadChart().catch(() => null);
+  if (!Chart || !canvas.isConnected) return;
   Chart.defaults.font.family = 'Prompt';
   new Chart(canvas, { type: 'bar', data: { labels: series.map((x) => label(x.day)), datasets: [{ label: name, data: series.map((x) => x.v), backgroundColor: color, borderRadius: 8, maxBarThickness: 26 }] }, options: { maintainAspectRatio: false, animation: reduced() ? false : { duration: 900 }, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 12 } }, y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: '#f0ebf9' } } } } });
 }

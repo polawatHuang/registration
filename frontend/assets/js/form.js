@@ -249,3 +249,14 @@ if (site?.payment_instructions) { $('#pay').hidden = false; $('#pay span').textC
 await Promise.all([loadUniversities(), get('/catalog/options').then((o) => fillSelect(form.elements.shopDurationId, o.length ? 'กรุณาเลือก' : 'ยังไม่มีตัวเลือก', o.map((x) => h('option', { value: x.id }, x.label)))).catch((e) => toast(e.message, 'error'))]);
 syncCert();
 progress();
+
+/** รุ่นที่เปิดรับ: ให้คนเห็นก่อนกรอก และให้ Google รู้จักกำหนดการจริงจากฐานข้อมูล โหลดหลังฟอร์มพร้อม */
+get('/catalog/schedule').then((list) => {
+  if (!list.length) return;
+  $('#openBox').hidden = false;
+  $('#openList').replaceChildren(...list.slice(0, 12).map((x) => h('button', { class: 'openrow', type: 'button', onclick: () => $('#universityId').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'center' }) }, h('span', { class: 'cal' }, h('b', {}, new Intl.DateTimeFormat('th-TH', { day: 'numeric', timeZone: 'Asia/Bangkok' }).format(new Date(x.startsAt))), new Intl.DateTimeFormat('th-TH', { month: 'short', timeZone: 'Asia/Bangkok' }).format(new Date(x.startsAt))), h('span', {}, h('b', {}, `${x.name} · ${x.universityName}`), h('small', {}, x.courseName)), h('span', { class: `badge ${x.seatsLeft === 0 ? 'bad' : 'ok'}` }, x.seatsLeft === null ? 'เปิดรับ' : x.seatsLeft ? `เหลือ ${x.seatsLeft} ที่` : 'เต็ม'))));
+  const ld = document.createElement('script');
+  ld.type = 'application/ld+json';
+  ld.textContent = JSON.stringify({ '@context': 'https://schema.org', '@graph': list.slice(0, 12).map((x) => ({ '@type': 'EducationEvent', name: `${x.courseName} ${x.name}`, startDate: x.startsAt, endDate: x.endsAt, eventStatus: 'https://schema.org/EventScheduled', eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode', inLanguage: 'th', url: `${location.origin}/`, location: { '@type': 'Place', name: x.location || x.universityName, address: { '@type': 'PostalAddress', addressCountry: 'TH' } }, organizer: { '@type': 'Organization', name: x.universityName }, offers: { '@type': 'Offer', url: `${location.origin}/`, availability: x.seatsLeft === 0 ? 'https://schema.org/SoldOut' : 'https://schema.org/InStock' } })) }).replace(/</g, '\\u003c');
+  document.head.append(ld);
+}).catch(() => {});

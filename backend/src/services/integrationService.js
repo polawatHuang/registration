@@ -111,7 +111,7 @@ const TESTS = {
   async email() {
     const c = await emailConfig();
     if (!c) return result(false, 'กรอก SMTP server พอร์ต และอีเมลผู้ส่งให้ครบ');
-    const t = createTransport(c);
+    const t = await createTransport(c);
     try { await t.verify(); return result(true, 'เชื่อมต่อ SMTP สำเร็จ'); } catch (err) { return result(false, explainMailError(err)); } finally { t.close(); }
   },
   async line_messaging(c) {

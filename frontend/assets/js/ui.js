@@ -51,3 +51,10 @@ export function confirmDialog({ title, text, confirm = 'ยืนยัน', dan
     d.showModal();
   });
 }
+/** โหลดไลบรารีใหญ่เมื่อใช้จริง หน้าเว็บไม่ต้องรอ */
+const scripts = new Map();
+export function loadScript(src) {
+  if (!scripts.has(src)) scripts.set(src, new Promise((resolve, reject) => { const s = document.createElement('script'); s.src = src; s.onload = resolve; s.onerror = () => { scripts.delete(src); reject(new Error('โหลดส่วนประกอบไม่สำเร็จ')); }; document.head.append(s); }));
+  return scripts.get(src);
+}
+export const loadChart = () => loadScript('/assets/vendor/chart.umd.js').then(() => window.Chart);

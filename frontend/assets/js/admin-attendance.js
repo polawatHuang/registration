@@ -1,6 +1,7 @@
 import { blobUrl, get, send } from './api.js';
 import { API_BASE } from './config.js';
-import { $, confirmDialog, fmtDateTime, fmtRange, fmtTime, h, icon, num, toast } from './ui.js';
+import { $, confirmDialog, fmtDateTime, fmtRange, fmtTime, h, icon, loadScript, num, toast } from './ui.js';
+
 import { celebrate } from './fx.js';
 import { badge, can, empty, failed, formDialog, initAdmin, skeleton } from './admin.js';
 
@@ -9,6 +10,7 @@ const RESULT = { ok: ['good', 'check-lg'], already: ['warn', 'clock-history'], n
 const RESULT_LABEL = { ok: 'สำเร็จ', already: 'ซ้ำ', not_in: 'ยังไม่เช็กอิน', wrong_session: 'ผิดรุ่น', wrong_day: 'ผิดวัน', unauthorized: 'ไม่มีสิทธิ์', invalid: 'QR ไม่ถูกต้อง', revoked: 'QR ถูกยกเลิก' };
 const toIso = (v) => (v ? new Date(`${v}:00+07:00`).toISOString() : null);
 const nowLocal = () => new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 16);
+const loadQr = () => loadScript('/assets/vendor/jsqr.js').catch(() => toast('โหลดตัวอ่าน QR ไม่สำเร็จ', 'error'));
 let sessions = []; let current = null; let tab = 'scan'; let action = 'in'; let stream = null; let loopId = 0; let data = null; let restart = null;
 const base = () => `/admin/attendance/sessions/${current}`;
 
@@ -69,6 +71,7 @@ async function startCamera(video, note) {
     $('#scanner')?.classList.add('live');
   } catch (e) { note.replaceChildren(e.name === 'NotAllowedError' ? 'ยังไม่ได้อนุญาตให้ใช้กล้อง เปิดสิทธิ์กล้องในเบราว์เซอร์แล้วกดลองใหม่' : 'เปิดกล้องไม่ได้ ใช้ปุ่ม "ถ่ายรูป QR" แทน'); return; }
   const detector = 'BarcodeDetector' in window ? await window.BarcodeDetector.getSupportedFormats().then((f) => (f.includes('qr_code') ? new window.BarcodeDetector({ formats: ['qr_code'] }) : null)).catch(() => null) : null;
+  if (!detector) loadQr();
   const canvas = document.createElement('canvas'); const g = canvas.getContext('2d', { willReadFrequently: true });
   const tick = async () => {
     if (my !== loopId) return;
@@ -86,6 +89,7 @@ async function startCamera(video, note) {
 }
 async function fromPhoto(file) {
   try {
+    await loadQr();
     const bmp = await createImageBitmap(file); const scale = Math.min(1, 1200 / Math.max(bmp.width, bmp.height));
     const c = document.createElement('canvas'); c.width = bmp.width * scale; c.height = bmp.height * scale;
     const g = c.getContext('2d'); g.drawImage(bmp, 0, 0, c.width, c.height);

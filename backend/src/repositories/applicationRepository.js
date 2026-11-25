@@ -64,7 +64,9 @@ function buildFilter({ q, status, sessionId, universityId, nationalIdHash }) {
 }
 export async function search({ page, pageSize, ...f }) {
   const { where, p } = buildFilter(f);
-  const rows = await query(`${BASE} ${where} ORDER BY a.submitted_at DESC, a.id DESC LIMIT :limit OFFSET :offset`, { ...p, limit: pageSize, offset: (page - 1) * pageSize });
+  // หา id ของหน้านั้นก่อนแล้วค่อยดึงข้อมูลเต็ม ไม่ต้องเรียงทั้งแถวของทุกใบ
+  const rows = await query(`${BASE} JOIN (SELECT a.id FROM applications a JOIN applicants p ON p.id = a.applicant_id JOIN training_sessions s ON s.id = a.session_id ${where} ORDER BY a.submitted_at DESC, a.id DESC LIMIT :limit OFFSET :offset) k ON k.id = a.id
+    ORDER BY a.submitted_at DESC, a.id DESC`, { ...p, limit: pageSize, offset: (page - 1) * pageSize });
   const [{ total }] = await query(`SELECT COUNT(*) AS total FROM applications a JOIN applicants p ON p.id = a.applicant_id JOIN training_sessions s ON s.id = a.session_id ${where}`, p);
   return { rows, total };
 }

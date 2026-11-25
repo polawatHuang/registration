@@ -1,4 +1,3 @@
-import writeXlsxFile from 'write-excel-file/node';
 import * as auth from '../services/adminAuthService.js';
 import * as users from '../services/adminUserService.js';
 import * as apps from '../services/applicationService.js';
@@ -68,6 +67,7 @@ export async function exportApplications(req, res) {
     ['ที่ตั้งร้าน', 'shopAddress', 40], ['มหาวิทยาลัย', 'universityName', 28], ['รุ่น', 'sessionName', 20], ['สถานะ', 'statusLabel', 24], ['วันที่สมัคร', 'submittedAt', 22], ['ชื่อในใบเสร็จ', 'receiptName', 28], ['ที่อยู่ใบเสร็จ', 'receiptAddress', 40]];
   const data = [cols.map(([h]) => ({ value: h, fontWeight: 'bold' })),
     ...rows.map((r) => cols.map(([, k]) => ({ type: String, value: k === 'submittedAt' ? thaiDate.format(r[k]) : String(r[k] ?? '') })))];
+  const { default: writeXlsxFile } = await import('write-excel-file/node');
   const buffer = await writeXlsxFile(data, { columns: cols.map(([, , width]) => ({ width })), sheet: 'ผู้สมัคร' }).toBuffer();
   res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="applications.xlsx"' });
   res.end(buffer);

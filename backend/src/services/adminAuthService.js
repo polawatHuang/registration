@@ -6,7 +6,8 @@ import { randomToken, sha256 } from '../utils/crypto.js';
 import { AppError } from '../utils/errors.js';
 
 export const SESSION_HOURS = 8;
-const DUMMY = bcrypt.hashSync('timing-equalizer', 12);
+/** hash ของข้อความสุ่มที่ทิ้งไปแล้ว ไม่ใช่รหัสของใคร ใช้ให้เวลาตรวจเท่ากันแม้ไม่มีชื่อผู้ใช้ (เป็นค่าคงที่ เพราะคำนวณตอนเปิดแอปช้ามาก) */
+const DUMMY = '$2b$12$j57a0XjZIsAUkjcymfjhCu3GodvDa5vx6sL7jeOtWrOysL.NMJbPW';
 
 export async function login({ username, password, ip, userAgent }) {
   const clear = await guardAttempt('admin_login', [username.toLowerCase(), `ip:${ip}`], [5, 30]);

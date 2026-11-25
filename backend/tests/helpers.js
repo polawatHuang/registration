@@ -67,6 +67,7 @@ async function startLineMock() {
     if (req.url.startsWith('/v2/bot/profile/') && mock.chat.strangers.has(req.url.split('/').pop())) return json(404, {});
     if (req.url.startsWith('/v2/bot/profile/')) return json(200, { displayName: `คุณ ${req.url.split('/').pop().slice(0, 12)}`, pictureUrl: 'https://profile.line-scdn.net/x' });
     if (req.url === '/v2/bot/chat/loading/start') { mock.chat.loading += 1; return json(202, {}); }
+    if (req.url.startsWith('/v2/bot/message/quota') && mock.hangQuota) return setTimeout(() => res.destroy(), 6000);
     if (req.url === '/v2/bot/message/quota') return json(200, mock.chat.quota);
     if (req.url === '/v2/bot/message/quota/consumption') return json(200, { totalUsage: mock.chat.used });
     if (/^\/v2\/bot\/message\/[^/]+\/content$/.test(req.url)) { res.writeHead(200); return res.end(mock.chat.content); }

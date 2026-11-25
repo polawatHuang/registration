@@ -1,5 +1,5 @@
 import { get } from './api.js';
-import { fmtRange, h, icon, num, reduced } from './ui.js';
+import { fmtRange, h, icon, loadChart, num, reduced } from './ui.js';
 import { barChart, days14, money } from './ai-report.js';
 import { countUp } from './fx.js';
 import { can, empty, failed, initAdmin, me, skeleton } from './admin.js';
@@ -16,15 +16,12 @@ function lastDays(daily) {
 async function load() {
   main.replaceChildren(...skeleton(3, '130px'));
   let d;
-  let site; let ret = null; let chat = null; let note = null; let sys = null; let credit = null;
-  // ส่วนเสริมพลาดได้โดยหน้าหลักยังแสดง และบอกว่าส่วนไหนพลาด
-  const problems = [];
-  const optional = async (allowed, path) => { if (!allowed) return null; try { return await get(path); } catch (e) { problems.push(e.message); return null; } };
-  try {
-    [d, site] = await Promise.all([get('/admin/dashboard'), get('/catalog/site-info')]);
-    const [r, t, y, c, k] = await Promise.all([optional(can('retention.manage'), '/admin/retention/summary'), optional(can('notifications.manage'), '/admin/notifications/state'), optional(can('settings.manage'), '/admin/system'), optional(can('chat.reply'), '/admin/chat/poll?filter=attention'), optional(can('ai.manage'), '/ai/credit')]);
-    ret = r; note = t; sys = y; chat = c?.counts ?? null; credit = k;
-  } catch (e) { main.replaceChildren(failed(e, load)); return; }
+  try { d = await get('/admin/dashboard'); } catch (e) { main.replaceChildren(failed(e, load)); return; }
+  // ส่วนเสริมโหลดตามมาเอง ช้าหรือพลาดก็ไม่ขวางหน้าหลัก
+  const alerts = h('div', { id: 'alerts' });
+  const warn = (cls, href2, ic, text) => alerts.append(h(href2 ? 'a' : 'div', { class: `legal-warn ${cls}`, href: href2 }, icon(ic), h('span', {}, text), href2 && icon('chevron-right')));
+  const extra = (allowed, path, show) => { if (allowed) get(path).then(show).catch((e) => { if (e.status !== 401) warn('', null, 'exclamation-triangle-fill', e.message); }); };
+  const kpis = h('section', { class: 'kpis' });
   const n = (s) => d.statuses.find((x) => x.status === s)?.n ?? 0;
   const pending = n('submitted') + n('under_review');
   const kpi = (i, ic, c, label, value, href) => {
@@ -34,18 +31,23 @@ async function load() {
   };
   const line = h('canvas', { role: 'img', 'aria-label': 'กราฟผู้สมัคร 14 วันล่าสุด' }); const pie = h('canvas', { role: 'img', 'aria-label': 'สัดส่วนสถานะผู้สมัคร' });
   const [cIn, cNote, cAi] = ['เช็กอินรายวัน', 'แจ้งเตือนรายวัน', 'คำถาม AI รายวัน'].map((l) => h('canvas', { role: 'img', 'aria-label': `กราฟ${l}` }));
-  main.replaceChildren(...[...(credit?.configured && (credit.health.status !== 'ok' || ['low', 'critical', 'empty'].includes(credit.level)) ? [h('a', { class: 'legal-warn ai-warn', href: '/admin/ai-knowledge.html#credit' }, icon('lightning-charge-fill'), h('span', {}, credit.health.status !== 'ok' ? `AI หยุดตอบ: ${credit.kindText ?? 'ขัดข้อง'}` : credit.level === 'empty' ? 'เครดิต AI น่าจะหมดแล้ว' : `เครดิต AI ${credit.level === 'critical' ? 'ใกล้หมด' : 'เหลือน้อย'} ประมาณ ${money(credit.remaining, credit.currency)}`), icon('chevron-right'))] : []), ...problems.map((p) => h('div', { class: 'legal-warn' }, icon('exclamation-triangle-fill'), h('span', {}, p))), ...(sys && !sys.ready ? [h('a', { class: 'legal-warn', href: '/admin/settings.html#system' }, icon('clipboard2-check-fill'), h('span', {}, `ยังไม่พร้อมเปิดรับสมัคร เหลือ ${num(sys.required.total - sys.required.ok)} รายการ: ${sys.items.filter((i) => i.level === 'required' && !i.ok).slice(0, 3).map((i) => i.label).join(', ')}${sys.required.total - sys.required.ok > 3 ? ' …' : ''}`), icon('chevron-right'))] : []), ...(site.legalApproved || sys ? [] : [h('a', { class: 'legal-warn', href: '/admin/settings.html#legal' }, icon('exclamation-triangle-fill'), h('span', {}, 'ประกาศความเป็นส่วนตัวยังเป็นฉบับร่าง ต้องเผยแพร่ก่อนเปิดรับสมัครจริง'), icon('chevron-right'))]),
-    ...(chat && (chat.unread || chat.attention) ? [h('a', { class: 'legal-warn chat', href: '/admin/chat.html' }, icon('chat-dots-fill'), h('span', {}, `แชตยังไม่อ่าน ${num(chat.unread)} · ต้องการเจ้าหน้าที่ ${num(chat.attention)}`), icon('chevron-right'))] : []),
-    ...(ret && (ret.due || ret.requests.pending) ? [h('a', { class: 'legal-warn', href: '/admin/retention.html' }, icon('trash3-fill'), h('span', {}, `ข้อมูลครบกำหนดลบ ${num(ret.due)} รายการ · คำขอลบรอพิจารณา ${num(ret.requests.pending)} รายการ${ret.requests.urgent ? ` (ใกล้ครบ 90 วัน ${num(ret.requests.urgent)})` : ''}`), icon('chevron-right'))] : []),
+  main.replaceChildren(...[alerts,
     h('section', { class: 'hero' }, h('h2', {}, `${hour < 12 ? 'สวัสดีตอนเช้า' : hour < 17 ? 'สวัสดีตอนบ่าย' : 'สวัสดีตอนเย็น'} คุณ${me.displayName}`), h('p', {}, pending ? `มีใบสมัครรอตรวจ ${num(pending)} ใบ` : 'ตรวจใบสมัครครบแล้ว ยอดเยี่ยม!'), h('img', { src: '/assets/images/leaf.svg', alt: '' })),
-    h('section', { class: 'kpis' }, kpi(0, 'people-fill', purple, 'ผู้สมัครทั้งหมด', d.total, '/admin/applications.html'), kpi(1, 'calendar-plus-fill', green, 'สมัครวันนี้', d.today), kpi(2, 'hourglass-split', '#f5821f', 'รอตรวจเอกสาร', pending, '/admin/applications.html?status=submitted'), kpi(3, 'exclamation-diamond-fill', '#c92a3a', 'รอผู้สมัครแก้', n('documents_incomplete'), '/admin/applications.html?status=documents_incomplete'),
-      kpi(4, 'check-circle-fill', '#35a66a', 'อนุมัติแล้ว', n('approved') + n('awaiting_training') + n('attended') + n('passed') + n('certified')), kpi(5, 'line', '#05a848', 'เข้าใช้ด้วย LINE', d.line.users), kpi(6, 'link-45deg', '#2f7fb5', 'ผูก LINE กับบุคคลแล้ว', d.line.linked), kpi(7, 'calendar2-check-fill', '#8a6be0', 'รุ่นที่เปิดรับ', d.sessions.length), kpi(10, 'person-check-fill', '#2f7fb5', 'ผู้เข้าอบรมแล้ว', d.attendance.total, can('attendance.manage') ? '/admin/attendance.html' : null), kpi(11, 'award-fill', '#c99a00', 'ใบประกาศที่ออก', d.certificates, can('certificates.manage') ? '/admin/certificates.html' : null), ...(d.ai ? [kpi(12, 'robot', '#6a4fc0', 'บทสนทนา AI เดือนนี้', d.ai.conversations, '/admin/ai-knowledge.html')] : []), ...(note ? [kpi(8, 'send-check-fill', '#05a848', 'แจ้งเตือนสำเร็จ 30 วัน', note.stats.sent ?? 0, '/admin/notifications.html'), kpi(9, 'send-x-fill', '#c92a3a', 'แจ้งเตือนล้มเหลว 30 วัน', note.stats.failed ?? 0, '/admin/notifications.html')] : [])),
+    (kpis.append(...[kpi(0, 'people-fill', purple, 'ผู้สมัครทั้งหมด', d.total, '/admin/applications.html'), kpi(1, 'calendar-plus-fill', green, 'สมัครวันนี้', d.today), kpi(2, 'hourglass-split', '#f5821f', 'รอตรวจเอกสาร', pending, '/admin/applications.html?status=submitted'), kpi(3, 'exclamation-diamond-fill', '#c92a3a', 'รอผู้สมัครแก้', n('documents_incomplete'), '/admin/applications.html?status=documents_incomplete'),
+      kpi(4, 'check-circle-fill', '#35a66a', 'อนุมัติแล้ว', n('approved') + n('awaiting_training') + n('attended') + n('passed') + n('certified')), kpi(5, 'line', '#05a848', 'เข้าใช้ด้วย LINE', d.line.users), kpi(6, 'link-45deg', '#2f7fb5', 'ผูก LINE กับบุคคลแล้ว', d.line.linked), kpi(7, 'calendar2-check-fill', '#8a6be0', 'รุ่นที่เปิดรับ', d.sessions.length), kpi(10, 'person-check-fill', '#2f7fb5', 'ผู้เข้าอบรมแล้ว', d.attendance.total, can('attendance.manage') ? '/admin/attendance.html' : null), kpi(11, 'award-fill', '#c99a00', 'ใบประกาศที่ออก', d.certificates, can('certificates.manage') ? '/admin/certificates.html' : null), ...(d.ai ? [kpi(12, 'robot', '#6a4fc0', 'บทสนทนา AI เดือนนี้', d.ai.conversations, '/admin/ai-knowledge.html')] : [])]), kpis),
     h('section', { class: 'grid2' }, h('div', { class: 'box' }, h('h2', {}, 'ผู้สมัคร 14 วันล่าสุด'), h('div', { class: 'chart' }, line)), h('div', { class: 'box' }, h('h2', {}, 'สถานะใบสมัคร'), d.total ? h('div', { class: 'chart' }, pie) : empty('pie-chart', 'ยังไม่มีข้อมูล'))),
     h('section', { class: 'grid2 even' }, h('div', { class: 'box' }, h('h2', {}, 'เช็กอิน 14 วัน'), h('div', { class: 'chart' }, cIn)), h('div', { class: 'box' }, h('h2', {}, 'แจ้งเตือนที่ส่งสำเร็จ 14 วัน'), h('div', { class: 'chart' }, cNote))),
     d.ai && h('section', { class: 'grid2 even' }, h('div', { class: 'box' }, h('h2', {}, `AI เดือนนี้ ${num(d.ai.tokens)} token · ${money(d.ai.cost, d.ai.currency)}`), h('div', { class: 'chart' }, cAi)), h('div', { class: 'box' }, h('h2', {}, 'คำถาม AI ที่พบบ่อย'), d.ai.frequent.length ? d.ai.frequent.map((f) => h('div', { class: 'occ' }, h('div', {}, h('span', {}, f.question), h('strong', {}, num(f.count))), h('div', { class: 'bar' }, h('i', { style: { '--w': `${(f.count / d.ai.frequent[0].count) * 100}%` } })))) : empty('chat', 'ยังไม่มีคำถาม'))),
     h('section', { class: 'box' }, h('h2', {}, 'ที่นั่งรุ่นที่เปิดรับ'), d.sessions.length ? d.sessions.map((s) => h('div', { class: 'occ' }, h('div', {}, h('span', {}, `${s.session_name} · ${s.university_name} · ${fmtRange(s.starts_at, s.starts_at)}`), h('strong', {}, s.capacity === null ? `${num(s.registered)} คน` : `${num(s.registered)}/${num(s.capacity)}`)),
       s.capacity !== null && h('div', { class: `bar ${s.registered >= s.capacity ? 'full' : ''}` }, h('i', { style: { '--w': `${Math.min(100, (s.registered / s.capacity) * 100)}%` } })))) : empty('calendar-x', 'ยังไม่มีรุ่นที่เปิดรับ'))].filter(Boolean));
-  const { Chart } = window;
+  extra(can('ai.manage'), '/ai/credit', (c) => { if (c.configured && (c.health.status !== 'ok' || ['low', 'critical', 'empty'].includes(c.level))) warn('ai-warn', '/admin/ai-knowledge.html#credit', 'lightning-charge-fill', c.health.status !== 'ok' ? `AI หยุดตอบ: ${c.kindText ?? 'ขัดข้อง'}` : c.level === 'empty' ? 'เครดิต AI น่าจะหมดแล้ว' : `เครดิต AI ${c.level === 'critical' ? 'ใกล้หมด' : 'เหลือน้อย'} ประมาณ ${money(c.remaining, c.currency)}`); });
+  extra(can('settings.manage'), '/admin/system', (y) => { const left = y.items.filter((i) => i.level === 'required' && !i.ok); if (left.length) warn('', '/admin/settings.html#system', 'clipboard2-check-fill', `ยังไม่พร้อมเปิดรับสมัคร เหลือ ${num(left.length)} รายการ: ${left.slice(0, 3).map((i) => i.label).join(', ')}${left.length > 3 ? ' …' : ''}`); });
+  extra(!can('settings.manage'), '/catalog/site-info', (x) => { if (!x.legalApproved) warn('', null, 'exclamation-triangle-fill', 'ประกาศความเป็นส่วนตัวยังเป็นฉบับร่าง ต้องเผยแพร่ก่อนเปิดรับสมัครจริง'); });
+  extra(can('chat.reply'), '/admin/chat/poll?filter=attention', ({ counts: c }) => { if (c.unread || c.attention) warn('chat', '/admin/chat.html', 'chat-dots-fill', `แชตยังไม่อ่าน ${num(c.unread)} · ต้องการเจ้าหน้าที่ ${num(c.attention)}`); });
+  extra(can('retention.manage'), '/admin/retention/summary', (r) => { if (r.due || r.requests.pending) warn('', '/admin/retention.html', 'trash3-fill', `ข้อมูลครบกำหนดลบ ${num(r.due)} รายการ · คำขอลบรอพิจารณา ${num(r.requests.pending)} รายการ${r.requests.urgent ? ` (ใกล้ครบ 90 วัน ${num(r.requests.urgent)})` : ''}`); });
+  extra(can('notifications.manage'), '/admin/notifications/state', (t) => kpis.append(kpi(8, 'send-check-fill', '#05a848', 'แจ้งเตือนสำเร็จ 30 วัน', t.stats.sent ?? 0, '/admin/notifications.html'), kpi(9, 'send-x-fill', '#c92a3a', 'แจ้งเตือนล้มเหลว 30 วัน', t.stats.failed ?? 0, '/admin/notifications.html')));
+  const Chart = await loadChart().catch(() => null);
+  if (!Chart || !line.isConnected) return;
   Chart.defaults.font.family = 'Prompt'; Chart.defaults.animation = reduced() ? false : { duration: 1100, easing: 'easeOutQuart' };
   barChart(cIn, days14(d.attendance.daily, (x) => x.n), { name: 'เช็กอิน', color: '#168447' });
   barChart(cNote, days14(d.notifications, (x) => x.n), { name: 'ส่งสำเร็จ', color: '#05a848' });

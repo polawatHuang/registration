@@ -1,5 +1,3 @@
-import QRCode from 'qrcode';
-import writeXlsxFile from 'write-excel-file/node';
 import * as att from '../services/attendanceService.js';
 import * as cert from '../services/certificateService.js';
 import { kick as notify } from '../services/notificationService.js';
@@ -17,6 +15,7 @@ const sendImage = (res, { buffer, mime }) => { res.set({ 'Content-Type': mime, '
 // ---------- ผู้สมัคร ----------
 export const myQr = async (req, res) => ok(res, await att.myQr(req.applicant, idOf(req)));
 export async function myQrImage(req, res) {
+  const { default: QRCode } = await import('qrcode');
   const { token } = await att.myQr(req.applicant, idOf(req));
   sendImage(res, { mime: 'image/svg+xml', buffer: await QRCode.toString(token, { type: 'svg', errorCorrectionLevel: 'M', margin: 2, color: { dark: '#17142a', light: '#ffffff' } }) });
 }
@@ -41,6 +40,7 @@ export async function exportRoster(req, res) {
   await insertAudit({ ...actor(req), action: 'attendance.export', entityType: 'training_session', entityId: r.session.id, metadata: { rows: r.items.length } });
   const cols = [['เลขที่ใบสมัคร', 18, (x) => x.applicationNo], ['ชื่อ-นามสกุล', 30, (x) => x.fullName], ['มือถือ', 14, (x) => x.mobile], ['สถานะ', 24, (x) => x.statusLabel], ['เช็กอินครั้งแรก', 22, (x) => (x.firstIn ? DT.format(x.firstIn) : '')], ['เข้าอบรม (วัน)', 14, (x) => String(x.days)], ['เช็กเอาต์ (วัน)', 14, (x) => String(x.daysOut)], ['รวมนาที', 12, (x) => String(x.minutes)], ['ครบเกณฑ์', 12, (x) => (x.met ? 'ครบ' : 'ไม่ครบ')], ['สิ่งที่ขาด', 40, (x) => x.missing.join(', ')]];
   const data = [cols.map(([h]) => ({ value: h, fontWeight: 'bold' })), ...r.items.map((x) => cols.map(([, , f]) => ({ type: String, value: f(x) })))];
+  const { default: writeXlsxFile } = await import('write-excel-file/node');
   const buffer = await writeXlsxFile(data, { columns: cols.map(([, width]) => ({ width })), sheet: 'การเข้าอบรม' }).toBuffer();
   res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="attendance.xlsx"' });
   res.end(buffer);

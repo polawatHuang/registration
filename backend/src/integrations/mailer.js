@@ -1,7 +1,8 @@
-import nodemailer from 'nodemailer';
 import { env } from '../config/env.js';
 
-export function createTransport(c) {
+/** โหลด nodemailer เมื่อจะส่งจริง ไม่ถ่วงเวลาเปิดแอป */
+export async function createTransport(c) {
+  const { default: nodemailer } = await import('nodemailer');
   const port = Number(c.smtp_port);
   const insecure = !env.isProd && env.SMTP_ALLOW_INSECURE === '1';
   return nodemailer.createTransport({

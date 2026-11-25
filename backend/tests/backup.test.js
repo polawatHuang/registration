@@ -16,6 +16,50 @@ const run = (script, args = [], env = {}) => new Promise((resolve) => {
 });
 const dir = () => path.join(s.storage, 'backups');
 
+describe('ตัวปลุก', () => {
+  test('/health รันงานเมื่อถึงรอบเท่านั้น ทำจบก่อนตอบ และยังตอบปกติเมื่องานล้ม', async () => {
+    const { runDue } = await import('../src/jobs/scheduler.js');
+    await s.query("UPDATE job_locks SET last_finished_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 HOUR), locked_until = UTC_TIMESTAMP()");
+    await runDue({ throttleMs: 0 });
+    const [{ n }] = await s.query('SELECT COUNT(*) n FROM job_locks WHERE last_finished_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 MINUTE)');
+    assert.equal(n, 7);
+    assert.equal(await runDue({ throttleMs: 0 }), null, 'เพิ่งรันไป ไม่รันซ้ำ');
+    await s.query("UPDATE job_locks SET last_finished_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 HOUR)");
+    await s.query('RENAME TABLE email_queue TO email_queue_x');
+    try {
+      const [a, b] = await Promise.all([runDue({ throttleMs: 0 }), runDue({ throttleMs: 0 })]);
+      assert.ok(a.some((x) => x.startsWith('emails')) && a === b, 'เรียกพร้อมกันใช้รอบเดียว');
+      assert.equal((await fetch(`${s.base}/api/v1/health`)).status, 200);
+    } finally { await s.query('RENAME TABLE email_queue_x TO email_queue'); }
+  });
+  test('โควตา LINE บนหน้าเว็บไม่รอ LINE: LINE ค้างก็ตอบทันทีด้วยค่าล่าสุด', async () => {
+    const line = await import('../src/integrations/lineMessagingClient.js');
+    const first = await line.quota({ fresh: true });
+    assert.equal(first.limit, 1000);
+    line.forgetQuota();
+    s.line.hangQuota = true;
+    await s.query("UPDATE system_settings SET setting_value = JSON_SET(setting_value, '$.at', 1) WHERE setting_key = 'line_quota_json'").catch(() => {});
+    let t = Date.now();
+    assert.equal(await line.quotaForView(), null, 'ไม่มีค่าที่ใช้ได้');
+    assert.ok(Date.now() - t < 2200, `${Date.now() - t}`);
+    line.forgetQuota();
+    await s.query('UPDATE system_settings SET setting_value = :v WHERE setting_key = :k', { k: 'line_quota_json', v: JSON.stringify({ at: Date.now() - 3_600_000, value: first }) });
+    t = Date.now();
+    assert.equal((await line.quotaForView()).limit, 1000);
+    assert.ok(Date.now() - t < 500, 'ใช้ค่าล่าสุดทันที');
+    s.line.hangQuota = false;
+    // ยอดเก่าในฐานข้อมูลใช้แสดงผลเท่านั้น ห้ามย้อนมาหยุดการส่งหลังเติมโควตาแล้ว
+    line.forgetQuota();
+    await s.query('UPDATE system_settings SET setting_value = :v WHERE setting_key = :k', { k: 'line_quota_json', v: JSON.stringify({ at: Date.now(), value: { limited: true, limit: 1000, used: 1000, remaining: 0 } }) });
+    assert.equal((await line.quotaForView()).remaining, 0);
+    assert.ok((await line.quota()).remaining > 0, 'การส่งถามยอดจริงจาก LINE');
+    // คำถามที่ค้างก่อนสั่งลืมค่า ต้องไม่เอายอดเก่ากลับมาใส่
+    line.forgetQuota();
+    const stale = line.quota(); line.forgetQuota(); s.line.chat.used = 7; await stale;
+    assert.equal((await line.quota()).used, 7);
+    s.line.chat.used = 0; line.forgetQuota();
+  });
+});
 describe('สำรองและกู้คืน', () => {
   test('สำรอง → กู้ลงฐานข้อมูลว่าง ได้ข้อมูลและโครงสร้างเท่าเดิม ถอดรหัสเลขบัตรได้ และไม่มี session', async () => {
     const r = await s.apply({ sessionId: await s.newSession(), fullName: "ต้น 'ข้าว' \\ ใจดี" });
@@ -93,7 +137,7 @@ describe('สำรองและกู้คืน', () => {
   });
   test('ตัวตั้งเวลาในแอปรันงานเอง และหยุดได้', async () => {
     const { startScheduler } = await import('../src/jobs/scheduler.js');
-    await s.query('UPDATE job_locks SET last_finished_at = NULL');
+    await s.query('UPDATE job_locks SET last_finished_at = NULL, locked_until = UTC_TIMESTAMP()');
     const keep = setInterval(() => {}, 50); // timer ของตัวตั้งเวลาไม่ค้ำโปรเซส
     const stop = startScheduler({ every: 60_000, first: 10 });
     let n = 0;

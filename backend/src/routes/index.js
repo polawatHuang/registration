@@ -13,6 +13,10 @@ import { uploadCertImage, uploadDocuments, uploadKnowledge, uploadRichMenu } fro
 import { apiNotFound } from '../middleware/errorHandler.js';
 
 export const api = Router();
+// ค่าตั้งต้นของทุก API: ห้ามเบราว์เซอร์หรือ proxy จำคำตอบ (รวมถึง 404 ตอนแอปยังไม่พร้อม)
+api.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+// หน้าเว็บเรียกไฟล์นี้เป็นอย่างแรก เพื่อปลุกแอปพร้อมกับที่เบราว์เซอร์โหลดไฟล์อื่น
+api.get('/warm.js', (_req, res) => res.type('application/javascript').send(''));
 api.get('/health', pub.health);
 api.post('/internal/jobs/run', authLimiter, pub.jobs);
 // ลายเซ็น LINE ต้องคำนวณจาก raw body

@@ -1,6 +1,4 @@
 import path from 'node:path';
-import PDFDocument from 'pdfkit';
-import QRCode from 'qrcode';
 import { ROOT } from '../config/env.js';
 
 const FONT = (f) => path.join(ROOT, 'backend/assets/fonts', f);
@@ -48,7 +46,7 @@ function drawText(doc, text, f, scale = 1) {
   doc.fillColor(f.color).text(text, Math.max(8, Math.min(PAGE.w - width - 8, x)), (PAGE.h * f.y) / 100, { lineBreak: false });
 }
 /** วาดโมดูล QR เป็นเวกเตอร์ คมทุกขนาดและไม่ต้องสร้างไฟล์ภาพ */
-function drawQr(doc, text, f) {
+function drawQr(doc, QRCode, text, f) {
   if (!f?.show) return;
   const { modules } = QRCode.create(text, { errorCorrectionLevel: 'M' });
   const quiet = 3; const unit = f.size / (modules.size + quiet * 2);
@@ -58,7 +56,9 @@ function drawQr(doc, text, f) {
   doc.fill('#111111');
 }
 
-export function renderCertificate({ layout, background, cert, verifyUrl, watermark = null }) {
+export async function renderCertificate({ layout, background, cert, verifyUrl, watermark = null }) {
+  // โหลดเมื่อใช้จริง ไม่ถ่วงเวลาเปิดแอป
+  const [{ default: PDFDocument }, { default: QRCode }] = await Promise.all([import('pdfkit'), import('qrcode')]);
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 0, info: { Title: `${layout.texts.title || 'Certificate'} ${cert.number}`, Author: 'E-Training', Subject: cert.course } });
     const chunks = [];
@@ -69,7 +69,7 @@ export function renderCertificate({ layout, background, cert, verifyUrl, waterma
     const values = { title: x.title, lead: x.lead, name: cert.name, after: x.after, course: cert.course, place: `${cert.university} · ${cert.session}`, dates: `อบรมวันที่ ${dateRange(cert.startsAt, cert.endsAt)}`, issued: `ออกให้ ณ วันที่ ${D.format(cert.issuedAt)}`, number: `เลขที่ ${cert.number}`, signer: x.signer, signerTitle: x.signerTitle };
     if (f.signer?.show && x.signer) { const lx = (PAGE.w * f.signer.x) / 100; const ly = (PAGE.h * f.signer.y) / 100 - 6; doc.moveTo(lx - 90, ly).lineTo(lx + 90, ly).lineWidth(0.8).stroke('#8e86a8'); }
     for (const [k, v] of Object.entries(values)) drawText(doc, v, f[k]);
-    drawQr(doc, verifyUrl, f.qr);
+    drawQr(doc, QRCode, verifyUrl, f.qr);
     if (watermark) doc.save().rotate(-24, { origin: [PAGE.w / 2, PAGE.h / 2] }).font('bold').fontSize(110).fillColor('#c92a3a').fillOpacity(0.16).text(watermark, 0, PAGE.h / 2 - 70, { width: PAGE.w, align: 'center', lineBreak: false }).restore();
     doc.end();
   });

@@ -14,7 +14,7 @@ let timer; let seq = 0; let items = [];
 const search = h('input', { class: 'input', type: 'search', placeholder: 'ชื่อ เลขที่ใบสมัคร มือถือ อีเมล ร้าน หรือเลขบัตร', 'aria-label': 'ค้นหาผู้สมัคร', oninput: () => { clearTimeout(timer); timer = setTimeout(() => { f.q = search.value.trim(); f.page = 1; load(); }, 280); } });
 const status = h('select', { class: 'input', 'aria-label': 'กรองสถานะ', onchange: () => { f.status = status.value; f.page = 1; load(); } }, h('option', { value: '' }, 'ทุกสถานะ'), Object.entries(STATUS).map(([k, v]) => h('option', { value: k, selected: k === f.status }, v[1])));
 const exportBtn = can('applicants.export') && h('button', { class: 'btn btn-purple', type: 'button', onclick: () => { const p = qs(); p.delete('page'); location.href = `${API_BASE}/admin/applications/export?${p}`; } }, icon('file-earmark-excel-fill'), 'ส่งออก Excel');
-main.append(h('section', { class: 'box' }, h('div', { class: 'filters' }, search, status, exportBtn), list, foot));
+main.replaceChildren(h('section', { class: 'box' }, h('div', { class: 'filters' }, search, status, exportBtn), list, foot));
 
 async function load(quiet = false) {
   const my = ++seq;

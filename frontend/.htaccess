@@ -1,0 +1,14 @@
+# Plesk ให้ Apache ส่งไฟล์ static เอง จึงตั้งที่นี่ ไม่มี mod_headers ก็ข้ามไป
+<IfModule mod_headers.c>
+  # หน้า สคริปต์ สไตล์: ถามเซิร์ฟเวอร์ก่อนใช้เสมอ (ตอบ 304 ถ้าไม่เปลี่ยน) อัปเดตแล้วเห็นผลทันที
+  <FilesMatch "\.(html|js|css|svg)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+  # ฟอนต์และไลบรารี: เปลี่ยนน้อย เก็บ 7 วัน
+  <FilesMatch "\.(woff2|png|umd\.js|min\.css)$">
+    Header set Cache-Control "public, max-age=604800"
+  </FilesMatch>
+  Header set X-Content-Type-Options "nosniff"
+  Header set X-Frame-Options "SAMEORIGIN"
+  Header set Referrer-Policy "same-origin"
+</IfModule>

@@ -7,7 +7,7 @@ const TYPES = [['', 'ทุกกิจกรรม'], ['auth.', 'เข้า/�
 let page = 1;
 const list = h('div', { class: 'list' }); const foot = h('div', {});
 const type = h('select', { class: 'input', 'aria-label': 'ประเภทกิจกรรม', onchange: () => { page = 1; load(); } }, TYPES.map(([v, l]) => h('option', { value: v }, l)));
-main.append(h('section', { class: 'box' }, h('div', { class: 'filters' }, type), list, foot));
+main.replaceChildren(h('section', { class: 'box' }, h('div', { class: 'filters' }, type), list, foot));
 async function load() {
   list.replaceChildren(...skeleton(6)); foot.replaceChildren();
   try {

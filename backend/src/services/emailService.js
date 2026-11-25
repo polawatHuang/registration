@@ -10,6 +10,7 @@ import { createTransport, explainMailError } from '../integrations/mailer.js';
 import { emailConfig } from './integrationService.js';
 import { alertEmail, erasureEmail, registrationEmail } from './emailTemplates.js';
 import { decryptText, encryptText, sha256 } from '../utils/crypto.js';
+import { track } from '../utils/background.js';
 import { notFound, tooMany } from '../utils/errors.js';
 
 const BACKOFF = [1, 5, 30, 120];
@@ -47,7 +48,7 @@ export async function processQueue(limit = 10) {
   const result = { sent: 0, retry: 0, failed: 0 };
   if (!jobs.length) return result;
   const site = await getSettings(['contact_phone', 'contact_email']);
-  const transport = createTransport(config);
+  const transport = await createTransport(config);
   try {
     for (const job of jobs) {
       try {
@@ -71,7 +72,7 @@ export async function processQueue(limit = 10) {
   return result;
 }
 /** ส่งทันทีหลังตอบผู้สมัคร โดยไม่ให้ผู้สมัครรอ ถ้าพลาดงานตั้งเวลาจะเก็บต่อ */
-export const kick = () => { processQueue().catch((err) => logger.error({ err: { message: err.message } }, 'email queue failed')); };
+export const kick = () => { track(processQueue().catch((err) => logger.error({ err: { message: err.message } }, 'email queue failed'))); };
 
 export async function resend(applicationId, { adminId, ip }) {
   await withTransaction(async (conn) => {

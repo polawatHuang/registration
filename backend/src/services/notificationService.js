@@ -12,6 +12,7 @@ import { adminFlex, compose, SAMPLE, toFlex, unknownVariables } from './notifica
 import { emailConfig } from './integrationService.js';
 import { kick as kickEmail, queueStatus, setStatusRenderer } from './emailService.js';
 import { statusEmail } from './emailTemplates.js';
+import { track } from '../utils/background.js';
 import { randomCode, sha256 } from '../utils/crypto.js';
 import { AppError, badRequest, conflict, notFound } from '../utils/errors.js';
 
@@ -258,7 +259,7 @@ async function wake() {
 }
 export function kick() {
   if (running) { again = true; return running; }
-  running = (async () => { do { again = false; await processEvents(); kickEmail(); await processQueue(); } while (again); })().catch((err) => logger.error({ err: { message: err.message } }, 'notification run failed')).finally(() => { running = null; wake(); });
+  running = track((async () => { do { again = false; await processEvents(); kickEmail(); await processQueue(); } while (again); })().catch((err) => logger.error({ err: { message: err.message } }, 'notification run failed')).finally(() => { running = null; wake(); }));
   return running;
 }
 export async function job() { const events = await processEvents(); return { events, ...(await scheduleReminders()), ...(await processQueue()) }; }
@@ -266,7 +267,7 @@ export async function job() { const events = await processEvents(); return { eve
 // ---------- หน้า Admin ----------
 export async function state(adminId) {
   const [s, stats, ready, me] = await Promise.all([settings(), repo.stats(), line.isReady(), repo.adminRecipient(adminId)]);
-  return { settings: s, stats: Object.fromEntries(stats.map((r) => [r.status, r.n])), daily: await repo.daily(), lineReady: ready, quota: ready ? await line.quota() : null, linked: Boolean(me?.line_id) };
+  return { settings: s, stats: Object.fromEntries(stats.map((r) => [r.status, r.n])), daily: await repo.daily(), lineReady: ready, quota: ready ? await line.quotaForView() : null, linked: Boolean(me?.line_id) };
 }
 export async function saveSettings(d, { adminId, ip }) {
   if (d.emailFallback && !(await emailConfig())) throw conflict('SMTP_NOT_READY', 'ตั้งค่าอีเมล (SMTP) ก่อนเปิดแจ้งทางอีเมล');
