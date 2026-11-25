@@ -17,6 +17,19 @@ export function erasureEmail(done, { code, reason }, site) {
   return { subject: `ผลคำขอลบข้อมูล ${code} | E-Training`, html, text: [`ผลคำขอลบข้อมูล ${code}`, '', ...lines, contact].join('\n') };
 }
 
+export function statusEmail(m, app) {
+  const font = "font-family:Prompt,'Sukhumvit Set','Leelawadee UI',Tahoma,sans-serif";
+  const [a, b] = { green: ['#168447', '#49378a'], purple: ['#6a4fc0', '#2c1f63'], orange: ['#f5821f', '#b8341f'], grey: ['#6b6780', '#3b3850'] }[m.tone] ?? ['#168447', '#49378a'];
+  const rows = m.rows.filter(([, v]) => v);
+  const html = `<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#efe8fb;${font};color:#202124"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:24px;overflow:hidden">
+<tr><td bgcolor="${a}" style="background:linear-gradient(135deg,${a},${b});padding:30px 28px;color:#ffffff;${font}"><div style="font-size:20px;font-weight:700;font-style:italic">E-Training</div><div style="font-size:24px;font-weight:700;margin-top:10px">${esc(plain(m.heading))}</div><div style="font-size:13px;margin-top:6px">${esc(app.application_no)}</div></td></tr>
+<tr><td style="padding:24px 28px 4px;font-size:16px;line-height:1.7;${font}">${esc(plain(m.body)).replace(/\n/g, '<br>')}</td></tr>
+<tr><td style="padding:12px 28px;${font}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows.map(([k, v]) => `<tr><td valign="top" style="padding:8px 10px 0 0;width:34%;font-size:14px;color:#716d86">${esc(k)}</td><td valign="top" style="padding:8px 0 0;font-size:15px;font-weight:600">${esc(plain(v))}</td></tr>`).join('')}</table></td></tr>
+${m.button ? `<tr><td align="center" style="padding:24px 28px;${font}"><a href="${esc(m.button.url)}" style="display:inline-block;background:${a};color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:13px 32px;border-radius:999px">${esc(m.button.label)}</a></td></tr>` : ''}
+<tr><td style="padding:0 28px 28px;font-size:13px;color:#5b5870;${font}">เข้าสู่ระบบด้วย LINE ที่ <a href="${esc(env.APP_URL)}/me.html" style="color:#168447">พื้นที่ของฉัน</a> เพื่อรับแจ้งทาง LINE แทนอีเมล</td></tr></table></td></tr></table></body></html>`;
+  return { subject: `${plain(m.heading)} | E-Training`, html, text: [m.heading, '', m.body, '', ...rows.map(([k, v]) => `${k}: ${v}`), m.button ? `${m.button.label}: ${m.button.url}` : ''].join('\n') };
+}
+
 export function registrationEmail(row, nationalId, site) {
   const days = D.format(row.starts_at) === D.format(row.ends_at) ? D.format(row.starts_at) : `${D.format(row.starts_at)} – ${D.format(row.ends_at)}`;
   const groups = [

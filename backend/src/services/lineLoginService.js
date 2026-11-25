@@ -7,7 +7,7 @@ import { randomToken, safeEqual, sha256 } from '../utils/crypto.js';
 import { AppError, badRequest, forbidden } from '../utils/errors.js';
 import crypto from 'node:crypto';
 
-const RETURN_PATHS = new Set(['/', '/tracking.html']);
+const RETURN_PATHS = new Set(['/', '/tracking.html', '/me.html']);
 
 async function ensureEnabled() {
   const config = await lineLoginConfig();
@@ -37,13 +37,22 @@ export async function finishLogin({ code, state, browser, ip }) {
     throw badRequest('LOGIN_EXPIRED', 'การเข้าสู่ระบบหมดอายุ กรุณาลองใหม่');
   }
   const claims = await line.verifyIdToken(config, await line.exchangeCode(config, code, saved.code_verifier), saved.nonce);
+  const lineUserId = await signIn(claims, 'line.login', ip);
+  return { lineUserId, returnTo: saved.return_to };
+}
+/** LIFF ส่ง ID Token มา ฝั่งเราตรวจกับ LINE เสมอ ไม่เชื่อ user id จากหน้าเว็บ */
+export async function liffLogin(idToken, ip) {
+  const config = await ensureEnabled();
+  return signIn(await line.verifyIdToken(config, idToken, null), 'line.liff_login', ip);
+}
+async function signIn(claims, action, ip) {
   const user = await repo.upsertLineUser({
     lineUserId: claims.sub, displayName: claims.name?.slice(0, 255) ?? null,
     pictureUrl: claims.picture?.startsWith('https://') ? claims.picture.slice(0, 1000) : null,
   });
   if (user.status !== 'active') throw forbidden('บัญชี LINE นี้ถูกระงับการใช้งาน');
-  await insertAudit({ actorType: 'applicant', action: 'line.login', entityType: 'line_user', entityId: user.id, ip });
-  return { lineUserId: user.id, returnTo: saved.return_to };
+  await insertAudit({ actorType: 'applicant', action, entityType: 'line_user', entityId: user.id, ip });
+  return user.id;
 }
 
 export async function unlink(lineUserId, ip) {

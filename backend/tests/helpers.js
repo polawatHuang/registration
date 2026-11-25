@@ -41,7 +41,7 @@ async function startSmtpMock() {
 async function startLineMock() {
   const codes = new Map();
   const tokens = new Map();
-  const mock = { overrides: {}, codes, aiReply: null, aiRequests: [], aiDelay: null, chat: { sent: [], keys: new Set(), status: { reply: [], push: [] }, quota: { type: 'limited', value: 1000 }, used: 0, loading: 0, strangers: new Set(), content: PNG } };
+  const mock = { overrides: {}, codes, tokens, rich: { menus: new Map(), default: null, status: {} }, aiReply: null, aiRequests: [], aiDelay: null, chat: { sent: [], keys: new Set(), status: { reply: [], push: [] }, quota: { type: 'limited', value: 1000 }, used: 0, loading: 0, strangers: new Set(), content: PNG } };
   const server = http.createServer(async (req, res) => {
     let body = '';
     for await (const c of req) body += c;
@@ -70,12 +70,16 @@ async function startLineMock() {
     if (req.url === '/v2/bot/message/quota') return json(200, mock.chat.quota);
     if (req.url === '/v2/bot/message/quota/consumption') return json(200, { totalUsage: mock.chat.used });
     if (/^\/v2\/bot\/message\/[^/]+\/content$/.test(req.url)) { res.writeHead(200); return res.end(mock.chat.content); }
+    if (req.url === '/v2/bot/richmenu' && req.method === 'POST') { const st = mock.rich.status.create ?? 200; if (st !== 200) return json(st, { message: 'bad menu' }); const id = `richmenu-${crypto.randomUUID()}`; mock.rich.menus.set(id, { ...JSON.parse(body), image: false }); return json(200, { richMenuId: id }); }
+    if (/^\/v2\/bot\/richmenu\/[^/]+\/content$/.test(req.url)) { const st = mock.rich.status.image ?? 200; const m = mock.rich.menus.get(req.url.split('/')[4]); if (st === 200 && m) m.image = true; return json(st, {}); }
+    if (/^\/v2\/bot\/user\/all\/richmenu/.test(req.url)) { mock.rich.default = req.method === 'DELETE' ? null : req.url.split('/').pop(); return json(200, {}); }
+    if (req.method === 'DELETE' && req.url.startsWith('/v2/bot/richmenu/')) { mock.rich.menus.delete(req.url.split('/').pop()); return json(200, {}); }
     const good = /^Bearer good-/.test(req.headers.authorization ?? '');
     if (req.url === '/v2/bot/info') return good ? json(200, { displayName: 'OA' }) : json(401, {});
-    if (req.url === '/chat/completions' && mock.aiReply) { mock.aiRequests.push(body); if (mock.aiDelay) await mock.aiDelay(); return json(200, { choices: [{ finish_reason: mock.aiFinish ?? 'stop', message: { content: mock.aiReply } }], base_resp: { status_code: 0 } }); }
+    if (req.url === '/chat/completions' && mock.aiReply) { mock.aiRequests.push(body); if (mock.aiDelay) await mock.aiDelay(); return json(200, { choices: [{ finish_reason: mock.aiFinish ?? 'stop', message: { content: mock.aiReply } }], ...(mock.aiUsage ? { usage: mock.aiUsage } : {}), base_resp: { status_code: 0 } }); }
     if (req.url === '/chat/completions') return good ? json(200, { choices: [{}], base_resp: { status_code: 0 } }) : json(200, { base_resp: { status_code: 1004 } });
     const t = tokens.get(f.get('id_token'));
-    if (!t || t.nonce !== f.get('nonce')) return json(400, {});
+    if (!t || (t.nonce ?? null) !== f.get('nonce')) return json(400, {});
     return json(200, { iss: 'https://access.line.me', sub: t.sub, aud: f.get('client_id'), exp: Math.floor(Date.now() / 1000) + 600, nonce: t.nonce, name: 'ผู้ทดสอบ', ...mock.overrides });
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));

@@ -24,6 +24,13 @@ export function createApp() {
   const json = express.json({ limit: '100kb' });
   // เส้นทางคลังความรู้รับข้อความยาว จึงใช้ parser ของตัวเองหลังตรวจสิทธิ์แล้ว
   app.use('/api/v1', (req, res, next) => (req.path.startsWith('/ai/knowledge') || req.path === '/line/webhook' ? next() : json(req, res, next)), api);
+  // หน้าเดียวที่โหลด LIFF SDK ของ LINE จึงผ่อน CSP เฉพาะหน้านี้
+  app.use(['/me.html', '/me'], (_req, res, next) => {
+    res.set('Content-Security-Policy', String(res.get('Content-Security-Policy')).replace("script-src 'self'", "script-src 'self' https://static.line-scdn.net").replace("connect-src 'self'", "connect-src 'self' https://api.line.me https://access.line.me https://liffsdk.line-scdn.net https://static.line-scdn.net"));
+    next();
+  });
+  // ลิงก์ใน QR ของใบประกาศ รหัสอยู่ใน path หน้าเว็บอ่านเอง
+  app.get('/certificate/verify/:code', (_req, res) => res.sendFile('certificate.html', { root: env.frontendPath }));
   app.use(express.static(env.frontendPath, { dotfiles: 'deny', extensions: ['html'], maxAge: env.isProd ? '1h' : 0 }));
   app.use((_req, res) => res.status(404).sendFile('404.html', { root: env.frontendPath }));
   app.use(errorHandler);

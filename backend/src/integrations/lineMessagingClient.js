@@ -13,11 +13,11 @@ export async function verifySignature(rawBody, signature) {
 export const isReady = async () => { const c = await getConfig(); return Boolean(c.line_channel_access_token && c.line_channel_secret); };
 
 /** status 0 = หมดเวลา/เครือข่าย ไม่รู้ว่าถึง LINE หรือไม่ */
-async function call(method, path, { body, headers = {}, host = env.LINE_API_URL, timeout = 10_000 } = {}) {
+async function call(method, path, { body, raw, headers = {}, host = env.LINE_API_URL, timeout = 10_000 } = {}) {
   const { line_channel_access_token: token } = await getConfig();
   if (!token) return { status: 401, body: null };
   try {
-    const res = await fetch(host + path, { method, redirect: 'error', signal: AbortSignal.timeout(timeout), headers: { authorization: `Bearer ${token}`, ...(body ? { 'content-type': 'application/json' } : {}), ...headers }, body: body && JSON.stringify(body) });
+    const res = await fetch(host + path, { method, redirect: 'error', signal: AbortSignal.timeout(timeout), headers: { authorization: `Bearer ${token}`, ...(body ? { 'content-type': 'application/json' } : {}), ...headers }, body: raw ?? (body && JSON.stringify(body)) });
     return { status: res.status, body: await res.json().catch(() => null) };
   } catch { return { status: 0, body: null }; }
 }
@@ -26,6 +26,12 @@ export const reply = (replyToken, messages) => call('POST', '/v2/bot/message/rep
 export const push = (to, messages, retryKey) => call('POST', '/v2/bot/message/push', { body: { to, messages }, headers: { 'X-Line-Retry-Key': retryKey } });
 export const profile = (userId) => call('GET', `/v2/bot/profile/${encodeURIComponent(userId)}`);
 export const loading = (chatId) => call('POST', '/v2/bot/chat/loading/start', { body: { chatId, loadingSeconds: 40 }, timeout: 4000 });
+
+export const createRichMenu = (menu) => call('POST', '/v2/bot/richmenu', { body: menu });
+export const uploadRichMenu = (id, buffer) => call('POST', `/v2/bot/richmenu/${encodeURIComponent(id)}/content`, { raw: buffer, headers: { 'content-type': 'image/jpeg' }, host: env.LINE_DATA_URL, timeout: 30_000 });
+export const setDefaultRichMenu = (id) => call('POST', `/v2/bot/user/all/richmenu/${encodeURIComponent(id)}`);
+export const clearDefaultRichMenu = () => call('DELETE', '/v2/bot/user/all/richmenu');
+export const deleteRichMenu = (id) => call('DELETE', `/v2/bot/richmenu/${encodeURIComponent(id)}`);
 
 let quotaCache = { at: 0, value: null };
 export async function quota({ fresh = false } = {}) {

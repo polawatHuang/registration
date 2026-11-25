@@ -23,5 +23,5 @@ export async function chat(messages, { maxTokens = 2000, temperature = 0.1 } = {
   const choice = body?.choices?.[0];
   // คำตอบที่ถูกตัดกลางคันอาจให้ข้อมูลผิด จึงไม่ใช้
   if (typeof choice?.message?.content !== 'string' || choice.finish_reason === 'length') throw fail('MiniMax ตอบไม่สมบูรณ์');
-  return { text: choice.message.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim(), model: c.minimax_model, tokens: body.usage?.total_tokens ?? null };
+  return { text: choice.message.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim(), model: c.minimax_model, tokens: body.usage?.total_tokens ?? null, tokensIn: body.usage?.prompt_tokens ?? null, tokensOut: body.usage?.completion_tokens ?? null };
 }

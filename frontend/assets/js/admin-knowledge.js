@@ -1,13 +1,14 @@
 import { get, send, upload } from './api.js';
 import { confirmDialog, fmtDateTime, h, icon, num, toast } from './ui.js';
 import { empty, failed, formDialog, initAdmin, skeleton } from './admin.js';
+import { historyView, reportView, settingsView } from './ai-report.js';
 
 const main = await initAdmin('ai-knowledge');
 let data; let tab = 'list'; let category = '';
 const thread = h('div', { class: 'thread', role: 'log', 'aria-live': 'polite' });
 
-async function edit(id) {
-  let k = { category: category || data.categories[0], status: 'draft', priority: 0 };
+async function edit(id, preset = {}) {
+  let k = { category: category || data.categories[0], status: 'draft', priority: 0, ...preset };
   if (id) { try { k = await get(`/ai/knowledge/${id}`); } catch (e) { toast(e.message, 'error'); return; } }
   formDialog({ title: id ? 'ตรวจและแก้ไขความรู้' : 'เพิ่มคำถาม-คำตอบ', values: k,
     fields: [{ name: 'title', label: 'หัวข้อ / คำถาม', required: true, wide: true }, { name: 'content', label: k.sourceType === 'file' ? 'ข้อความที่อ่านได้จากไฟล์ (ตรวจให้ถูกต้องก่อนเผยแพร่)' : 'คำตอบ', type: 'textarea', required: true, wide: true }, { name: 'category', label: 'หมวด', type: 'select', options: data.categories.map((c) => [c, c]) }, { name: 'status', label: 'สถานะ', type: 'select', options: [['draft', 'ฉบับร่าง (AI ยังไม่ใช้)'], ['published', 'เผยแพร่ (AI ใช้ตอบ)']] }, { name: 'keywords', label: 'คำค้นเพิ่มเติม', hint: 'คำที่คนมักใช้ถาม คั่นด้วยเว้นวรรค' }, { name: 'priority', label: 'ความสำคัญ (-5 ถึง 5)', type: 'number', min: -5 }],
@@ -35,7 +36,7 @@ function listView() {
       h('div', { class: 'list' }, items.length ? items.map((k) => h('div', { class: 'krow' }, h('button', { class: 'lrow cols', type: 'button', onclick: () => edit(k.id) }, h('span', { class: 'n' }, icon(k.source_type === 'file' ? 'file-earmark-text' : 'chat-square-text'), ' ', k.title), h('span', { class: 'm' }, `${k.category} · ${num(k.chars)} ตัวอักษร · ${fmtDateTime(k.updated_at)}${k.updated_by_name ? ` โดย ${k.updated_by_name}` : ''}`), h('span', { class: `badge ${k.status === 'published' ? 'ok' : 'warn'}` }, k.status === 'published' ? 'เผยแพร่' : 'ฉบับร่าง')),
         h('button', { class: 'icon-btn', type: 'button', 'aria-label': `ลบ ${k.title}`, onclick: async () => { if (!(await confirmDialog({ title: 'ลบความรู้นี้?', text: `"${k.title}" AI จะไม่ใช้ตอบอีก และไฟล์ต้นฉบับจะถูกลบ`, confirm: 'ลบ', danger: true }))) return; try { await send('DELETE', `/ai/knowledge/${k.id}`); toast('ลบแล้ว'); load(); } catch (e) { toast(e.message, 'error'); } } }, icon('trash3')))) : empty('journal-x', 'ยังไม่มีความรู้ในหมวดนี้')))];
 }
-const MODE = { answer: ['ok', 'ตอบจากคลังความรู้'], fallback: ['warn', 'ไม่พบข้อมูล จึงไม่เดา'], personal: ['info', 'คำถามส่วนบุคคล'], search: ['info', 'ยังไม่ได้ตั้งค่า MiniMax แสดงผลค้นหาแทน'], error: ['bad', 'MiniMax ขัดข้อง'] };
+const MODE = { answer: ['ok', 'ตอบจากคลังความรู้'], fallback: ['warn', 'ไม่พบข้อมูล จึงไม่เดา'], personal: ['info', 'คำถามส่วนบุคคล'], search: ['info', 'ยังไม่ได้ตั้งค่า MiniMax แสดงผลค้นหาแทน'], error: ['bad', 'MiniMax ขัดข้อง'], limit: ['bad', 'ใช้ token ครบเพดานเดือนนี้'] };
 function testView() {
   const q = h('input', { class: 'input', placeholder: 'ลองถามแบบลูกค้า เช่น ต้องใช้เอกสารอะไรบ้าง', maxLength: 500, 'aria-label': 'คำถาม', required: true });
   const btn = h('button', { class: 'btn btn-green', type: 'submit', 'aria-label': 'ถาม' }, icon('send-fill'));
@@ -58,7 +59,7 @@ function testView() {
   } }, q, btn))];
 }
 function render() {
-  main.replaceChildren(h('div', { class: 'tabs', role: 'tablist' }, [['list', 'คลังความรู้'], ['test', 'ทดสอบถาม AI']].map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === tab), onclick: () => { tab = k; render(); } }, l))), ...(tab === 'list' ? listView() : testView()));
+  main.replaceChildren(h('div', { class: 'tabs', role: 'tablist' }, [['list', 'คลังความรู้'], ['test', 'ทดสอบถาม AI'], ['report', 'รายงานและค่าใช้จ่าย'], ['history', 'ประวัติการถาม'], ['settings', 'ตั้งค่า AI']].map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === tab), onclick: () => { tab = k; render(); } }, l))), ...({ list: listView, test: testView, report: () => reportView((question) => edit(null, { title: question, keywords: question.slice(0, 200) })), history: historyView, settings: settingsView })[tab]());
 }
 async function load() {
   if (!data) main.replaceChildren(...skeleton());

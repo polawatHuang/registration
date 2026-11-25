@@ -3,6 +3,7 @@ import * as knowledge from '../repositories/knowledgeRepository.js';
 import { listOpenSessions, getSettings } from '../repositories/catalogRepository.js';
 import { chat, isConfigured } from '../integrations/minimaxClient.js';
 import { buildIndex, chunkText } from '../utils/knowledgeText.js';
+import { aiSettings, overBudget, record } from './aiReportService.js';
 import { logger } from '../config/logger.js';
 
 const fmt = new Intl.DateTimeFormat('th-TH', { dateStyle: 'long', timeStyle: 'short', timeZone: 'Asia/Bangkok' });
@@ -42,30 +43,39 @@ const SYSTEM = `คุณคือ Training Assistant ผู้ช่วยก�
 5. ห้ามเปิดเผยข้อมูลส่วนบุคคล และห้ามรับปากอนุมัติหรือแก้ไขข้อมูลใดๆ
 6. ตอบเป็นข้อความธรรมดา ไม่ใช้ markdown`;
 
-/** หัวใจของ AI: หน้าทดสอบของ Admin ใช้ตัวนี้ และ LINE webhook จะเรียกตัวเดียวกัน */
-export async function answer(rawQuestion) {
+/** หัวใจของ AI: หน้าทดสอบของ Admin และ LINE webhook ใช้ตัวเดียวกัน ทุกครั้งบันทึกการใช้งาน */
+export async function answer(rawQuestion, { channel = 'test', conversationId = null } = {}) {
+  const started = Date.now();
+  const r = await respond(rawQuestion);
+  await record(r, { channel, conversationId, ms: Date.now() - started });
+  return r;
+}
+async function respond(rawQuestion) {
   const question = redact(rawQuestion).trim();
   const live = await liveChunks();
-  const fallback = { mode: 'fallback', answer: `ขออภัย ยังไม่มีข้อมูลยืนยันในเรื่องนี้${live.contact ? ` กรุณาติดต่อเจ้าหน้าที่\n${live.contact}` : ' กรุณาติดต่อเจ้าหน้าที่'}`, sources: [], question };
+  const set = await aiSettings();
+  const fallback = { mode: 'fallback', answer: set.fallback ? `${set.fallback}${live.contact ? `\n${live.contact}` : ''}` : `ขออภัย ยังไม่มีข้อมูลยืนยันในเรื่องนี้${live.contact ? ` กรุณาติดต่อเจ้าหน้าที่\n${live.contact}` : ' กรุณาติดต่อเจ้าหน้าที่'}`, sources: [], question };
   if (PERSONAL.test(question)) return { mode: 'personal', answer: `เพื่อความปลอดภัย กรุณาตรวจสถานะของคุณหลังยืนยันตัวตนที่ ${env.APP_URL}/tracking.html`, sources: [], question };
   const hits = buildIndex([...(await staticChunks()), ...live.chunks])(question);
   const sources = hits.map((h, i) => ({ no: i + 1, id: h.sourceId, title: h.title, category: h.category, excerpt: h.text.slice(0, 220), score: Math.round(h.score * 100) / 100 }));
   if (!hits.length) return fallback;
   if (!(await isConfigured())) return { mode: 'search', answer: null, sources, question };
+  if (await overBudget()) return { ...fallback, mode: 'limit', sources };
   const block = hits.map((h, i) => `[${i + 1}] ${h.title}\n${h.text}`.replace(/<\/?sources>/gi, '')).join('\n\n');
   let reply;
-  try { reply = await chat([{ role: 'system', content: SYSTEM }, { role: 'user', content: `<sources>\n${block}\n</sources>\n\nคำถาม: ${question.replace(/<\/?sources>/gi, '')}` }]); } catch (err) {
+  try { reply = await chat([{ role: 'system', content: SYSTEM }, { role: 'user', content: `<sources>\n${block}\n</sources>\n\nคำถาม: ${question.replace(/<\/?sources>/gi, '')}` }], { maxTokens: set.maxTokens, temperature: set.temperature }); } catch (err) {
     logger.warn({ code: err.code }, 'ai answer failed');
     return { ...fallback, mode: 'error', error: err.message, sources };
   }
+  const usage = { model: reply.model, tokens: reply.tokens, tokensIn: reply.tokensIn, tokensOut: reply.tokensOut };
   const cited = [...new Set([...reply.text.matchAll(/\[(\d{1,2})\]/g)].map((m) => Number(m[1])))];
   // ไม่อ้างอิงแหล่ง หรืออ้างแหล่งที่ไม่มีจริง = เชื่อถือไม่ได้ ไม่ส่งให้ผู้ใช้
-  if (/NO_ANSWER/.test(reply.text) || !cited.length || cited.some((n) => n < 1 || n > hits.length)) return { ...fallback, tokens: reply.tokens };
+  if (/NO_ANSWER/.test(reply.text) || !cited.length || cited.some((n) => n < 1 || n > hits.length)) return { ...fallback, ...usage };
   const clean = reply.text.replace(/\s*\[\d{1,2}\]/g, '').trim();
   // ตัวเลขสำคัญ (วัน เวลา ราคา เบอร์) ต้องมีอยู่ในแหล่งข้อมูลจริงทุกตัว
   const evidence = redactDigits(`${block}\n${question}`);
   const invented = (redactDigits(clean).match(/\d+/g) ?? []).filter((n) => n.length > 1 && !evidence.includes(n));
-  if (invented.length || !clean) return { ...fallback, tokens: reply.tokens };
-  return { mode: 'answer', answer: clean, sources: sources.filter((s) => cited.includes(s.no)), model: reply.model, tokens: reply.tokens, question };
+  if (invented.length || !clean) return { ...fallback, ...usage };
+  return { mode: 'answer', answer: clean, sources: sources.filter((s) => cited.includes(s.no)), ...usage, question };
 }
 const redactDigits = (t) => t.replace(/[๐-๙]/g, (d) => String(d.charCodeAt(0) - 0x0e50)).replace(/(?<=\d)[,-](?=\d)/g, '');

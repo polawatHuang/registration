@@ -2,12 +2,14 @@ import { env } from './src/config/env.js';
 import { logger } from './src/config/logger.js';
 import { pool } from './src/config/db.js';
 import { createApp } from './src/app.js';
+import { startScheduler } from './src/jobs/scheduler.js';
 
 // Passenger อาจกำหนด PORT เป็น socket path จึงไม่แปลงเป็นตัวเลขเสมอ
 const port = /^\d+$/.test(env.PORT) ? Number(env.PORT) : env.PORT;
 export const server = createApp().listen(port, (err) => {
   if (err) { logger.fatal({ err }, 'listen failed'); process.exit(1); }
   logger.info({ port: env.PORT }, 'LINE SMART TRAINING started');
+  if (env.JOBS_IN_APP) startScheduler();
 });
 
 function shutdown(signal) {

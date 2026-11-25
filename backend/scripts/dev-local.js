@@ -30,6 +30,8 @@ const line = http.createServer(async (req, res) => {
   const json = (s, o) => { res.writeHead(s, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
   if (u.pathname === '/v2/bot/message/reply' || u.pathname === '/v2/bot/message/push') { const b = JSON.parse(body); inbox.push({ to: b.to ?? b.replyToken.split('.')[0], text: b.messages.map((m) => m.text ?? m.altText).join('\n'), by: b.messages[0].sender?.name ?? 'LINE OA' }); return json(200, {}); }
   if (u.pathname.startsWith('/v2/bot/profile/')) return json(200, { displayName: PEOPLE[u.pathname.split('/').pop()] ?? 'ลูกค้าทดสอบ' });
+  if (u.pathname === '/v2/bot/richmenu') return json(200, { richMenuId: `richmenu-${crypto.randomUUID()}` });
+  if (u.pathname.includes('/richmenu')) return json(200, {});
   if (u.pathname === '/v2/bot/info') return json(200, { displayName: 'OA จำลอง' });
   if (u.pathname === '/v2/bot/message/quota') return json(200, { type: 'limited', value: 500 });
   if (u.pathname === '/v2/bot/message/quota/consumption') return json(200, { totalUsage: 42 });
@@ -101,6 +103,12 @@ for (let i = 0; i < names.length; i += 1) {
   const r = await fetch(`http://localhost:${port}/api/v1/applications`, { method: 'POST', body: fd });
   if (!r.ok) console.error('demo application failed', r.status, await r.text());
 }
+// รุ่นที่กำลังจัดวันนี้ สำหรับลองสแกน QR ประกาศผล และออกใบประกาศ
+const live = (await query(`INSERT INTO training_sessions (course_id, university_id, session_name, starts_at, ends_at, location, capacity, status) VALUES (1, 1, 'รุ่นที่จัดวันนี้', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 HOUR), DATE_ADD(UTC_TIMESTAMP(), INTERVAL 6 HOUR), 'ห้องประชุมตัวอย่าง', 40, 'open')`)).insertId;
+await query("UPDATE applications SET session_id = :live, status = 'awaiting_training' WHERE id IN (1, 2, 3)", { live });
+await query("UPDATE applications SET session_id = :live, status = 'attended' WHERE id = 4", { live });
+await query("INSERT INTO attendance_records (application_id, session_id, day, check_in_at, check_in_method) VALUES (4, :live, DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 HOUR)), DATE_SUB(UTC_TIMESTAMP(), INTERVAL 40 MINUTE), 'qr')", { live });
+await query("UPDATE applications SET session_id = :live, status = 'passed' WHERE id IN (5, 6)", { live });
 for (const [id, text] of [['Udemo1', 'สวัสดีค่ะ สมัครยังไงคะ'], ['Udemo2', 'ต้องใช้เอกสารอะไรบ้าง'], ['Udemo3', 'ขอคุยกับเจ้าหน้าที่หน่อยครับ']]) { inbox.push({ to: id, text, by: 'me' }); await customer(id, { type: 'text', text }); }
 console.log(`จำลองเป็นลูกค้า LINE ได้ที่ ${lineUrl}/simulate`);
 console.log(`พร้อมใช้งาน http://localhost:${port}  (บัญชีเจ้าหน้าที่อยู่ใน .local/dev-admin.txt)`);

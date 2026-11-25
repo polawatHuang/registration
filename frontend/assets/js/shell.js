@@ -2,7 +2,7 @@ import { get, send } from './api.js';
 import { API_BASE } from './config.js';
 import { $, confirmDialog, h, icon, toast } from './ui.js';
 
-const loginUrl = () => `${API_BASE}/auth/line/start?returnTo=${location.pathname.startsWith('/tracking') ? '/tracking.html' : '/'}`;
+const loginUrl = () => `${API_BASE}/auth/line/start?returnTo=${location.pathname.startsWith('/tracking') ? '/tracking.html' : location.pathname.startsWith('/me') ? '/me.html' : '/'}`;
 export const lineButton = (label = 'เข้าสู่ระบบด้วย LINE', cls = '') => h('a', { class: `btn btn-line ${cls}`, href: loginUrl() }, icon('line'), label);
 
 const LINE_ERRORS = { LOGIN_CANCELLED: 'ยกเลิกการเข้าสู่ระบบด้วย LINE', LOGIN_EXPIRED: 'การเข้าสู่ระบบหมดอายุ กรุณาลองใหม่อีกครั้ง', LINE_LOGIN_DISABLED: 'ระบบยังไม่ได้เปิดใช้ LINE Login', FORBIDDEN: 'บัญชี LINE นี้ถูกระงับการใช้งาน' };
@@ -10,7 +10,7 @@ const LINE_ERRORS = { LOGIN_CANCELLED: 'ยกเลิกการเข้า�
 function userMenu(session) {
   const { line } = session;
   const menu = h('div', { class: 'menu', hidden: true },
-    h('a', { href: '/tracking.html' }, icon('clipboard2-check'), 'ใบสมัครของฉัน'),
+    h('a', { href: '/me.html' }, icon('person-badge'), 'พื้นที่ของฉัน'), h('a', { href: '/tracking.html' }, icon('clipboard2-check'), 'ใบสมัครของฉัน'),
     h('button', { type: 'button', onclick: async () => { await send('POST', '/auth/logout').catch(() => {}); location.reload(); } }, icon('box-arrow-right'), 'ออกจากระบบ'),
     h('button', { type: 'button', onclick: async () => {
       if (!(await confirmDialog({ title: 'ยกเลิกเชื่อมบัญชี LINE?', text: 'คุณจะไม่เห็นใบสมัครผ่าน LINE นี้อีก จนกว่าจะเชื่อมใหม่ด้วยเลขที่ใบสมัคร', confirm: 'ยกเลิกการเชื่อม', danger: true }))) return;
@@ -26,7 +26,7 @@ function userMenu(session) {
 export async function initShell(active) {
   const slot = h('div', {});
   const link = (href, ic, label, key) => h('a', { href, 'aria-current': active === key ? 'page' : null, 'aria-label': label }, icon(ic), h('span', {}, label));
-  $('#topbar').append(h('a', { class: 'mini', href: '/' }, 'E-Training', h('img', { src: '/assets/images/leaf.svg', alt: '' })), h('nav', { class: 'topnav', 'aria-label': 'เมนูหลัก' }, link('/', 'pencil-square', 'สมัครอบรม', 'apply'), link('/tracking.html', 'search-heart', 'ติดตามสถานะ', 'track')), slot);
+  $('#topbar').append(h('a', { class: 'mini', href: '/' }, 'E-Training', h('img', { src: '/assets/images/leaf.svg', alt: '' })), h('nav', { class: 'topnav', 'aria-label': 'เมนูหลัก' }, link('/', 'pencil-square', 'สมัครอบรม', 'apply'), link('/tracking.html', 'search-heart', 'ติดตามสถานะ', 'track'), link('/me.html', 'person-badge', 'พื้นที่ของฉัน', 'me')), slot);
   const params = new URLSearchParams(location.search);
   if (params.has('line')) {
     const r = params.get('line');

@@ -95,12 +95,14 @@ export async function deleteForLineUser(lineUserId, conn) {
     WHERE c.line_user_id = :lineUserId AND m.media_storage_name IS NOT NULL`, { lineUserId }, conn);
   const c = await queryOne('SELECT id FROM chat_conversations WHERE line_user_id = :lineUserId FOR UPDATE', { lineUserId }, conn);
   if (!c) return;
+  await query('DELETE FROM ai_interactions WHERE conversation_id = :id', { id: c.id }, conn);
   await query('DELETE FROM chat_messages WHERE conversation_id = :id', { id: c.id }, conn);
   await query("UPDATE admin_audit_logs SET metadata_json = NULL WHERE entity_type = 'chat' AND entity_id = CAST(:id AS CHAR)", { id: c.id }, conn);
   await query('DELETE FROM chat_conversations WHERE id = :id', { id: c.id }, conn);
 }
 export const countOld = async (months) => (await queryOne('SELECT COUNT(*) AS n FROM chat_messages WHERE created_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL :months MONTH)', { months })).n;
 export async function deleteOld(months, conn) {
+  await query('DELETE FROM ai_interactions WHERE created_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL :months MONTH) LIMIT 20000', { months }, conn);
   const ids = (await query('SELECT id FROM chat_messages WHERE created_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL :months MONTH) ORDER BY id LIMIT 5000 FOR UPDATE', { months }, conn)).map((r) => r.id);
   if (!ids.length) return 0;
   await query('INSERT IGNORE INTO purge_files (storage_name) SELECT media_storage_name FROM chat_messages WHERE id IN (:ids) AND media_storage_name IS NOT NULL', { ids }, conn);

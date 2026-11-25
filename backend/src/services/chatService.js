@@ -7,9 +7,11 @@ import { isConfigured } from '../integrations/minimaxClient.js';
 import { getSettings, setSetting } from '../repositories/catalogRepository.js';
 import { insertAudit } from '../repositories/auditRepository.js';
 import { answer } from './aiService.js';
+import { aiSettings } from './aiReportService.js';
 import { command, kick as notify } from './notificationService.js';
 import { insertEvent } from '../repositories/notificationRepository.js';
-import { adminMessage, aiMessage, HANDOFF, HUMAN_TEXT, welcome } from './chatTemplates.js';
+import { CONTACT_DATA, viewUrl, WELCOME_KEYS } from './richMenuService.js';
+import { adminMessage, aiMessage, contactMessage, HANDOFF, HUMAN_TEXT, welcome } from './chatTemplates.js';
 import { readDocument, storeDocument } from './storageService.js';
 import { flushFiles } from './retentionService.js';
 import { env } from '../config/env.js';
@@ -18,7 +20,6 @@ import { AppError, conflict, notFound } from '../utils/errors.js';
 import { STATUS_LABELS } from '../utils/status.js';
 
 const AI_KEY = 'ai_chat_enabled';
-const AI_PER_HOUR = 20;
 const FRESH_MS = 120_000;
 const TOKEN_MS = 50_000;
 const HUMAN = /เจ้าหน้าที่|แอดมิน|admin|คุยกับคน|ติดต่อคน|พนักงาน/i;
@@ -87,7 +88,7 @@ const describe = (m) => {
 
 async function handle(e, attempts) {
   if (e.type === 'unsend') return onUnsend(e);
-  if (!['message', 'follow', 'unfollow'].includes(e.type)) return undefined;
+  if (!['message', 'follow', 'unfollow', 'postback'].includes(e.type)) return undefined;
   const at = Number.isFinite(e.timestamp) ? new Date(e.timestamp) : new Date();
   const canSend = e.mode !== 'standby';
   const saved = await withTransaction(async (conn) => {
@@ -96,6 +97,7 @@ async function handle(e, attempts) {
     if (e.type === 'unfollow') { await repo.setFriend(user.id, 'blocked', conn); await repo.setToken(conv.id, null, null, conn); await repo.bump(conv.id, conn); return { user, conv }; }
     await repo.setFriend(user.id, 'friend', conn);
     const token = canSend && typeof e.replyToken === 'string' ? e.replyToken.slice(0, 100) : null;
+    if (e.type === 'postback') return { user, conv, postback: String(e.postback?.data ?? '').slice(0, 300), token };
     if (e.type === 'follow') { await repo.setToken(conv.id, token, at, conn); return { user, conv }; }
     // คำสั่ง (รหัสเชื่อมเจ้าหน้าที่ / หยุดรับข่าว) ไม่เก็บเป็นแชต และไม่เข้า AI
     if (e.message?.type === 'text' && await isCommand(e.message.text)) return { user, conv, command: String(e.message.text), token };
@@ -109,6 +111,8 @@ async function handle(e, attempts) {
   });
   if (e.type !== 'unfollow' && (!saved.user.profile_at || Date.now() - new Date(saved.user.profile_at) > 86_400_000)) await refreshProfile(saved.user);
   if (saved.command) { const reply = attempts === 1 ? await command(saved.command, saved.user) : null; if (reply && saved.token) await line.reply(saved.token, [adminMessage(reply)]); return undefined; }
+  // ปุ่ม "ติดต่อ / AI" บน Rich Menu: ตอบช่องทางติดต่อด้วย reply ซึ่งไม่กินโควตา
+  if (saved.postback === CONTACT_DATA && saved.token && attempts === 1) { const c = await getSettings(['contact_phone', 'contact_email', 'contact_line_url']); await line.reply(saved.token, [contactMessage(c, await aiEnabled())]); return undefined; }
   if (e.type === 'follow') return canSend && attempts === 1 && Date.now() - at < FRESH_MS ? sendWelcome(saved.conv.id, saved.user) : undefined;
   if (e.type !== 'message') return undefined;
   if (['image', 'file'].includes(e.message.type)) await fetchMedia(saved.messageId, e.message);
@@ -174,7 +178,8 @@ async function deliver(conv, messageId, retryKey, messages) {
 const lockFull = (id, conn) => repo.lockConversation(id, conn);
 
 async function sendWelcome(conversationId, user) {
-  const msg = welcome(user.display_name);
+  const w = await getSettings(WELCOME_KEYS);
+  const msg = welcome(user.display_name, { title: w.line_welcome_title, text: w.line_welcome_text, home: await viewUrl('home') });
   const retryKey = crypto.randomUUID();
   const { conv, id } = await withTransaction(async (conn) => {
     const c = await lockFull(conversationId, conn);
@@ -197,13 +202,13 @@ async function maybeAnswer(conversationId, messageId, text, at, lineUid) {
   if (Date.now() - at > FRESH_MS) { await repo.setAttention(conversationId, 'ข้อความเข้าช้า AI ไม่ได้ตอบ'); await repo.aiDone(messageId); return; }
   if (text.trim() === HUMAN_TEXT || HUMAN.test(text)) {
     await sendAi(conversationId, messageId, HANDOFF, { mode: 'handoff' }, { attention: 'ขอคุยกับเจ้าหน้าที่', stop: true });
-  } else if (await repo.countAiReplies(conversationId) >= AI_PER_HOUR) await callStaff(conversationId, 'ถามเกินจำนวนที่ AI ตอบต่อชั่วโมง');
+  } else if (await repo.countAiReplies(conversationId) >= (await aiSettings()).perHour) await callStaff(conversationId, 'ถามเกินจำนวนที่ AI ตอบต่อชั่วโมง');
   else if (!(await isConfigured())) await callStaff(conversationId, 'ยังไม่ได้ตั้งค่า MiniMax');
   else {
     line.loading(lineUid);
-    const r = await answer(text.slice(0, 500));
+    const r = await answer(text.slice(0, 500), { channel: 'line', conversationId });
     const meta = { mode: r.mode, sources: (r.sources ?? []).slice(0, 5).map((s) => s.title.slice(0, 80)), tokens: r.tokens ?? null };
-    if (r.answer) await sendAi(conversationId, messageId, r.answer, meta, { attention: ['fallback', 'error'].includes(r.mode) ? (r.mode === 'error' ? 'MiniMax ขัดข้อง' : 'AI ไม่มีข้อมูลตอบ') : null });
+    if (r.answer) await sendAi(conversationId, messageId, r.answer, meta, { attention: ['fallback', 'error', 'limit'].includes(r.mode) ? (r.mode === 'error' ? 'MiniMax ขัดข้อง' : r.mode === 'limit' ? 'ใช้ token ครบเพดานเดือนนี้' : 'AI ไม่มีข้อมูลตอบ') : null });
     else await callStaff(conversationId, 'AI ไม่มีข้อมูลตอบ');
   }
   await repo.aiDone(messageId);
@@ -321,7 +326,7 @@ export async function suggest(id) {
   await mustFind(id);
   const m = await repo.lastInboundText(id);
   if (!m) throw conflict('NO_QUESTION', 'ยังไม่มีข้อความให้ AI ช่วยร่าง');
-  const r = await answer(dec(m.content_enc).slice(0, 500));
+  const r = await answer(dec(m.content_enc).slice(0, 500), { channel: 'suggest', conversationId: id });
   return { mode: r.mode, text: r.mode === 'answer' || r.mode === 'personal' ? r.answer : null, sources: (r.sources ?? []).slice(0, 5).map((s) => ({ title: s.title, excerpt: s.excerpt })) };
 }
 export async function media(id, messageId, { adminId, ip }) {

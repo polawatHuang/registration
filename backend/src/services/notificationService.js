@@ -9,13 +9,16 @@ import { insertAudit } from '../repositories/auditRepository.js';
 import * as line from '../integrations/lineMessagingClient.js';
 import { ADMIN_EVENTS, APPLICANT_TYPES, STATUS_TO_TYPE, VARIABLES } from '../config/notificationTypes.js';
 import { adminFlex, compose, SAMPLE, toFlex, unknownVariables } from './notificationTemplates.js';
+import { emailConfig } from './integrationService.js';
+import { kick as kickEmail, queueStatus, setStatusRenderer } from './emailService.js';
+import { statusEmail } from './emailTemplates.js';
 import { randomCode, sha256 } from '../utils/crypto.js';
 import { AppError, badRequest, conflict, notFound } from '../utils/errors.js';
 
-const KEYS = { enabled: 'notify_enabled', daysBefore: 'notify_days_before', hoursBefore: 'notify_hours_before', evaluationUrl: 'notify_evaluation_url' };
+const KEYS = { enabled: 'notify_enabled', daysBefore: 'notify_days_before', hoursBefore: 'notify_hours_before', evaluationUrl: 'notify_evaluation_url', emailFallback: 'notify_email_fallback' };
 export async function settings() {
   const s = await getSettings(Object.values(KEYS));
-  return { enabled: s[KEYS.enabled] === '1', daysBefore: Number(s[KEYS.daysBefore] ?? 3), hoursBefore: Number(s[KEYS.hoursBefore] ?? 2), evaluationUrl: s[KEYS.evaluationUrl] || null };
+  return { enabled: s[KEYS.enabled] === '1', daysBefore: Number(s[KEYS.daysBefore] ?? 3), hoursBefore: Number(s[KEYS.hoursBefore] ?? 2), evaluationUrl: s[KEYS.evaluationUrl] || null, emailFallback: s[KEYS.emailFallback] === '1' };
 }
 const BACKOFF = [1, 5, 30, 120];
 const EVENT_MAX_AGE = 24 * 3_600_000;
@@ -73,9 +76,13 @@ export async function sendTest(key, d, { adminId, ip }) {
 // ---------- เหตุการณ์ → คิว ----------
 async function applicantEvent(e, type, conn, payload = null) {
   const r = await repo.lineOfApplication(e.aggregate_id, conn);
-  if (!r?.line_user_id) return;
   const t = await repo.findTemplate(type, conn);
-  if (t && !t.is_active) return;
+  if (!r || (t && !t.is_active)) return;
+  if (!r.line_user_id) {
+    // ผู้ที่ไม่ได้เชื่อม LINE: อีเมลยืนยันการสมัครมีอยู่แล้ว จึงไม่ส่งซ้ำ
+    if (type !== 'submitted' && (await settings()).emailFallback) await queueStatus({ applicationId: e.aggregate_id, type, key: `notify:${e.id}:${type}` }, conn);
+    return;
+  }
   await repo.enqueue({ lineUserId: r.line_user_id, applicationId: e.aggregate_id, type, payload, key: `event:${e.id}:${type}` }, conn);
 }
 const adminEvent = (event, conn) => repo.enqueueAdmin(event, ADMIN_EVENTS[event].window ?? 300, conn);
@@ -92,6 +99,7 @@ export async function processEvents() {
         if (e.event_type === 'application.submitted') { await applicantEvent(e, 'submitted', conn); await adminEvent('new_applicant', conn); }
         else if (e.event_type === 'application.documents_resubmitted') { await applicantEvent(e, 'documents_received', conn); await adminEvent('documents_received', conn); }
         else if (e.event_type === 'application.status_changed' && STATUS_TO_TYPE[payload.to]) await applicantEvent(e, STATUS_TO_TYPE[payload.to], conn);
+        else if (e.event_type === 'line.linked') await applicantEvent(e, 'linked', conn);
         else if (e.event_type === 'chat.help_requested') await adminEvent('help_requested', conn);
         else if (e.event_type === 'chat.ai_unanswered') await adminEvent('ai_unanswered', conn);
         else if (['consent.withdrawn', 'erasure.requested'].includes(e.event_type)) await adminEvent('privacy_request', conn);
@@ -118,7 +126,11 @@ export async function scheduleReminders(now = new Date()) {
       const at = atOf(r);
       if (at > now) continue;
       const lineUser = await repo.lineOfApplication(r.id);
-      if (!lineUser?.line_user_id) continue; // เชื่อม LINE ทีหลังยังได้รับ เพราะยังไม่บันทึกคีย์
+      if (!lineUser?.line_user_id) {
+        // เชื่อม LINE ทีหลังยังได้รับทาง LINE เพราะยังไม่บันทึกคีย์ของคิว LINE
+        if (s.emailFallback) { const key = `notify:${type}:${r.id}:${Math.floor(new Date(keyOf(r)).getTime() / 1000)}`; scheduled += await queueStatus({ applicationId: r.id, type, startsAt: new Date(r.starts_at).getTime(), key }); }
+        continue;
+      }
       scheduled += await repo.enqueue({ lineUserId: lineUser.line_user_id, applicationId: r.id, type, payload: JSON.stringify({ startsAt: new Date(r.starts_at).getTime() }), at: now, expires: expiresOf(r), key: `${type}:${r.id}:${Math.floor(new Date(keyOf(r)).getTime() / 1000)}` });
     }
   };
@@ -152,6 +164,16 @@ async function buildApplicant(q) {
   if (!t.active) return { cancel: 'ปิดใช้ข้อความนี้แล้ว' };
   return { message: compose(t.content, app, { evaluationUrl: (await settings()).evaluationUrl }) };
 }
+/** เนื้อหาอีเมลสร้างตอนส่งจริงจากข้อมูลล่าสุด ใช้ข้อความชุดเดียวกับ LINE ที่แก้จาก Admin */
+setStatusRenderer(async (job, app) => {
+  const { type, startsAt } = JSON.parse(job.payload_json);
+  const def = APPLICANT_TYPES[type];
+  if (!def || !(await settings()).emailFallback || (def.status && app.status !== def.status)) return null;
+  if (type.startsWith('reminder_') && (!['approved', 'awaiting_training'].includes(app.status) || new Date(app.starts_at).getTime() !== startsAt || new Date(app.starts_at) < new Date())) return null;
+  // เชื่อม LINE ระหว่างรอคิว: สถานะยังส่งทางอีเมลได้ครั้งเดียว ไม่ซ้ำเพราะคีย์ต่อเหตุการณ์
+  const t = await templateOf(type);
+  return t.active ? statusEmail(compose(t.content, app, { evaluationUrl: (await settings()).evaluationUrl }), app) : null;
+});
 async function buildAdmin(q) {
   const event = ADMIN_EVENTS[q.notification_type.slice(6)];
   const a = await repo.adminRecipient(q.admin_id);
@@ -167,11 +189,16 @@ async function sendOne(q, token) {
   if (built.cancel) return end('cancelled', built.cancel);
   const user = await repo.findLineUser(q.admin_id ? built.lineId : q.line_user_id);
   if (!user || user.status !== 'active') return end('cancelled', 'บัญชี LINE ถูกระงับ');
-  if (user.friend_status === 'blocked') return end('cancelled', 'ผู้รับบล็อก LINE OA');
+  // ส่งทาง LINE ไม่ได้: ส่งอีเมลแทนถ้าเปิดไว้ คีย์ตามรายการคิวจึงไม่ส่งซ้ำ
+  const unreachable = async (reason) => {
+    if (q.application_id && !q.campaign_id && q.notification_type in APPLICANT_TYPES && q.notification_type !== 'submitted' && (await settings()).emailFallback) { await queueStatus({ applicationId: q.application_id, type: q.notification_type, startsAt: q.payload_json ? JSON.parse(q.payload_json).startsAt ?? null : null, key: `notify:queue:${q.id}` }); kickEmail(); }
+    return end('cancelled', reason);
+  };
+  if (user.friend_status === 'blocked') return unreachable('ผู้รับบล็อก LINE OA');
   if (q.campaign_id && user.campaign_opt_out) return end('cancelled', 'ผู้รับไม่รับข้อความกลุ่ม');
   if (user.friend_status === 'unknown') {
     const p = await line.profile(user.line_user_id);
-    if (p.status === 404) return end('cancelled', 'ผู้รับยังไม่ได้เพิ่มเพื่อน LINE OA');
+    if (p.status === 404) return unreachable('ผู้รับยังไม่ได้เพิ่มเพื่อน LINE OA');
     if (p.status === 200) await repo.setFriend(user.id, 'friend');
   }
   const quota = await line.quota();
@@ -219,7 +246,7 @@ async function wake() {
 }
 export function kick() {
   if (running) { again = true; return running; }
-  running = (async () => { do { again = false; await processEvents(); await processQueue(); } while (again); })().catch((err) => logger.error({ err: { message: err.message } }, 'notification run failed')).finally(() => { running = null; wake(); });
+  running = (async () => { do { again = false; await processEvents(); kickEmail(); await processQueue(); } while (again); })().catch((err) => logger.error({ err: { message: err.message } }, 'notification run failed')).finally(() => { running = null; wake(); });
   return running;
 }
 export async function job() { const events = await processEvents(); return { events, ...(await scheduleReminders()), ...(await processQueue()) }; }
@@ -230,10 +257,11 @@ export async function state(adminId) {
   return { settings: s, stats: Object.fromEntries(stats.map((r) => [r.status, r.n])), daily: await repo.daily(), lineReady: ready, quota: ready ? await line.quota() : null, linked: Boolean(me?.line_id) };
 }
 export async function saveSettings(d, { adminId, ip }) {
-  if (d.enabled && !(await line.isReady())) throw conflict('LINE_NOT_READY', 'ตั้งค่า LINE Messaging API ก่อนเปิดแจ้งเตือน');
+  if (d.emailFallback && !(await emailConfig())) throw conflict('SMTP_NOT_READY', 'ตั้งค่าอีเมล (SMTP) ก่อนเปิดแจ้งทางอีเมล');
+  if (d.enabled && !d.emailFallback && !(await line.isReady())) throw conflict('LINE_NOT_READY', 'ตั้งค่า LINE Messaging API ก่อนเปิดแจ้งเตือน');
   await withTransaction(async (conn) => {
-    for (const [k, v] of Object.entries({ enabled: d.enabled ? '1' : '', daysBefore: String(d.daysBefore), hoursBefore: String(d.hoursBefore), evaluationUrl: d.evaluationUrl ?? '' })) await setSetting(KEYS[k], v, conn);
-    await insertAudit({ adminId, action: 'notification.settings', entityType: 'notification', ip, metadata: { enabled: d.enabled } }, conn);
+    for (const [k, v] of Object.entries({ enabled: d.enabled ? '1' : '', daysBefore: String(d.daysBefore), hoursBefore: String(d.hoursBefore), evaluationUrl: d.evaluationUrl ?? '', emailFallback: d.emailFallback ? '1' : '' })) await setSetting(KEYS[k], v, conn);
+    await insertAudit({ adminId, action: 'notification.settings', entityType: 'notification', ip, metadata: { enabled: d.enabled, emailFallback: d.emailFallback } }, conn);
   });
 }
 export async function queue(f) { const p = { ...f, limit: f.pageSize, offset: (f.page - 1) * f.pageSize }; return { items: await repo.listQueue(p), total: await repo.countQueue(p) }; }

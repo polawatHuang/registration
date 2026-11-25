@@ -47,3 +47,9 @@ export function upload(path, formData, onProgress = () => {}) {
     x.send(formData);
   });
 }
+/** ไฟล์ที่ต้องใช้สิทธิ์ (PDF/ภาพ) คืน object URL ผู้เรียกต้อง revoke เมื่อเลิกใช้ */
+export async function blobUrl(path, formData) {
+  const res = await fetch(API_BASE + path, { method: formData ? 'POST' : 'GET', headers: csrf ? { 'X-CSRF-Token': csrf } : {}, body: formData, credentials: 'same-origin' }).catch(() => { throw new ApiError(0, null); });
+  if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null));
+  return URL.createObjectURL(await res.blob());
+}

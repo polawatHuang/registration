@@ -1,6 +1,6 @@
 import { query, queryOne } from '../config/db.js';
 
-const BASE = `SELECT a.*, p.national_id_enc, s.session_name, s.starts_at, s.ends_at, s.location, s.map_url, s.details AS session_details,
+const BASE = `SELECT a.*, p.national_id_enc, s.session_name, s.starts_at, s.ends_at, s.location, s.map_url, s.details AS session_details, s.course_id,
   c.name AS course_name, u.name AS university_name, o.label AS shop_duration
   FROM applications a JOIN applicants p ON p.id = a.applicant_id JOIN training_sessions s ON s.id = a.session_id
   JOIN courses c ON c.id = s.course_id JOIN universities u ON u.id = s.university_id JOIN lookup_options o ON o.id = a.shop_duration_option_id`;

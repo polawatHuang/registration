@@ -27,17 +27,21 @@ export const countActive = async (sessionId, conn) => (await queryOne('SELECT CO
 
 export const insertUniversity = async (u, conn) => (await query('INSERT INTO universities (name, is_active, sort_order) VALUES (:name, :isActive, :sortOrder)', u, conn)).insertId;
 export const updateUniversity = async (u, conn) => (await query('UPDATE universities SET name = :name, is_active = :isActive, sort_order = :sortOrder WHERE id = :id', u, conn)).affectedRows;
+export const insertCourse = async (c, conn) => (await query('INSERT INTO courses (code, name, is_active) VALUES (:code, :name, :isActive)', c, conn)).insertId;
+export const updateCourse = async (c, conn) => (await query('UPDATE courses SET code = :code, name = :name, is_active = :isActive WHERE id = :id', c, conn)).affectedRows;
 export const insertOption = async (o, conn) => (await query('INSERT INTO lookup_options (category, label, is_active, sort_order) VALUES (:category, :label, :isActive, :sortOrder)', o, conn)).insertId;
 export const updateOption = async (o, conn) => (await query('UPDATE lookup_options SET label = :label, is_active = :isActive, sort_order = :sortOrder WHERE id = :id', o, conn)).affectedRows;
 export const insertSession = async (s, conn) => (await query(`INSERT INTO training_sessions
-  (course_id, university_id, session_name, starts_at, ends_at, location, map_url, details, capacity, registration_opens_at, registration_closes_at, status)
-  VALUES (:courseId, :universityId, :sessionName, :startsAt, :endsAt, :location, :mapUrl, :details, :capacity, :opensAt, :closesAt, :status)`, s, conn)).insertId;
+  (course_id, university_id, session_name, starts_at, ends_at, location, map_url, details, capacity, registration_opens_at, registration_closes_at, status, require_checkout, min_minutes, min_days)
+  VALUES (:courseId, :universityId, :sessionName, :startsAt, :endsAt, :location, :mapUrl, :details, :capacity, :opensAt, :closesAt, :status, :requireCheckout, :minMinutes, :minDays)`, s, conn)).insertId;
 export const updateSession = async (s, conn) => (await query(`UPDATE training_sessions SET course_id = :courseId, university_id = :universityId,
   session_name = :sessionName, starts_at = :startsAt, ends_at = :endsAt, location = :location, map_url = :mapUrl, details = :details, capacity = :capacity,
-  registration_opens_at = :opensAt, registration_closes_at = :closesAt, status = :status WHERE id = :id`, s, conn)).affectedRows;
+  registration_opens_at = :opensAt, registration_closes_at = :closesAt, status = :status,
+  require_checkout = :requireCheckout, min_minutes = :minMinutes, min_days = :minDays WHERE id = :id`, s, conn)).affectedRows;
 
 const remover = (table) => async (id, conn) => (await query(`DELETE FROM ${table} WHERE id = :id`, { id }, conn)).affectedRows;
 export const deleteUniversity = remover('universities');
+export const deleteCourse = remover('courses');
 export const deleteOption = remover('lookup_options');
 export const deleteSession = remover('training_sessions');
 

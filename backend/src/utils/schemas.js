@@ -40,6 +40,7 @@ export const userUpdateSchema = z.object({ displayName: text(150), roleId: id, s
 const isActive = z.boolean().default(true).transform((v) => (v ? 1 : 0));
 const sortOrder = z.coerce.number().int().min(-9999).max(9999).default(0);
 export const universitySchema = z.object({ name: text(200), isActive, sortOrder });
+export const courseSchema = z.object({ code: z.preprocess((v) => clean(v)?.toUpperCase?.(), z.string().regex(/^[A-Z0-9-]{2,50}$/, 'ใช้ A-Z 0-9 และ - ความยาว 2-50 ตัว')), name: text(255), isActive });
 export const optionSchema = z.object({ label: text(150), isActive, sortOrder });
 const date = z.iso.datetime({ offset: true, message: 'วันเวลาไม่ถูกต้อง' }).transform((v) => new Date(v));
 const optDate = z.preprocess((v) => v || null, date.nullable());
@@ -47,6 +48,7 @@ const httpsUrl = (max) => z.preprocess((v) => clean(v) || null, z.url({ protocol
 export const sessionSchema = z.object({
   courseId: id, universityId: id, sessionName: text(150), startsAt: date, endsAt: date, location: optionalText(255), mapUrl: httpsUrl(500), details: optionalText(5000),
   capacity: z.preprocess((v) => (v === '' || v === undefined ? null : v), z.coerce.number().int().min(1).max(100000).nullable()),
+  requireCheckout: z.boolean().default(false).transform((v) => (v ? 1 : 0)), minDays: z.preprocess((v) => (v === '' || v === undefined ? 1 : v), z.coerce.number().int().min(1).max(60)), minMinutes: z.preprocess((v) => (v === '' || v === undefined ? null : v), z.coerce.number().int().min(1).max(60000).nullable()),
   opensAt: optDate, closesAt: optDate, status: z.enum(['draft', 'open', 'closed', 'completed', 'cancelled']),
 }).refine((s) => s.endsAt > s.startsAt, { path: ['endsAt'], message: 'เวลาสิ้นสุดต้องหลังเวลาเริ่ม' })
   .refine((s) => !s.opensAt || !s.closesAt || s.closesAt > s.opensAt, { path: ['closesAt'], message: 'วันปิดรับต้องหลังวันเปิดรับ' });
@@ -63,7 +65,7 @@ export const erasureSchema = z.object({ note: optionalText(500) });
 export const pageSchema = z.object({ page: z.coerce.number().int().min(1).max(100000).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25) });
 export const templateKey = z.string().regex(/^[a-z0-9_]{3,50}$/);
 export const templateSchema = z.object({ key: filter(templateKey), title: optionalText(100).optional(), heading: text(80), body: text(900), buttonLabel: optionalText(20).optional(), tone: z.enum(['green', 'purple', 'orange', 'grey']), active: z.boolean().default(true) });
-export const notifySettingsSchema = z.object({ enabled: z.boolean(), daysBefore: z.coerce.number().int().min(0).max(30), hoursBefore: z.coerce.number().int().min(0).max(24), evaluationUrl: httpsUrl(500).optional() });
+export const notifySettingsSchema = z.object({ enabled: z.boolean(), daysBefore: z.coerce.number().int().min(0).max(30), hoursBefore: z.coerce.number().int().min(0).max(24), evaluationUrl: httpsUrl(500).optional(), emailFallback: z.boolean().default(false) });
 export const notifyListSchema = z.object({ status: filter(z.enum(['pending', 'processing', 'sent', 'failed', 'cancelled'])), type: filter(z.enum(['applicant', 'admin', 'campaign'])), page: z.coerce.number().int().min(1).max(100000).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25) });
 export const notifyActSchema = z.object({ action: z.enum(['retry', 'cancel']) });
 export const recipientSchema = z.object({ events: z.array(z.string().max(40)).max(20) });
@@ -88,7 +90,38 @@ export const integrationsSchema = z.object({
 export const testTarget = z.enum(['line_messaging', 'line_login', 'minimax', 'email']);
 export const knowledgeCategory = z.string().refine((v) => CATEGORIES.includes(v), 'หมวดไม่ถูกต้อง');
 export const knowledgeSchema = z.object({ title: text(300), content: text(300_000, 5), category: knowledgeCategory, keywords: optionalText(500), status: z.enum(['draft', 'published']), priority: z.coerce.number().int().min(-5).max(5).default(0) });
+const optNum = (min, max) => z.preprocess((v) => (v === '' || v === undefined ? null : v), z.coerce.number().min(min).max(max).nullable());
+export const aiSettingsSchema = z.object({ maxTokens: z.coerce.number().int().min(200, 'ต้องไม่น้อยกว่า 200').max(16000), temperature: z.coerce.number().min(0).max(1, 'อยู่ระหว่าง 0 ถึง 1'), fallback: optionalText(500), perHour: z.coerce.number().int().min(1).max(500), monthlyTokens: optInt(1000, 2_000_000_000), priceIn: optNum(0, 100000), priceOut: optNum(0, 100000), currency: z.enum(['USD', 'THB', 'CNY']) });
+export const aiResolveSchema = z.object({ ids: z.array(z.number().int().positive()).min(1).max(2000) });
 export const askSchema = z.object({ question: text(500, 2) });
+export const liffSchema = z.object({ idToken: z.string().min(20).max(4000) });
+export const richMenuSchema = z.object({ chatBarText: text(14) });
+export const welcomeSchema = z.object({ title: optionalText(60), text: optionalText(300) });
+export const lineUsersSchema = z.object({ page: z.coerce.number().int().min(1).max(100000).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25), q: filter(z.string().max(100)), filter: filter(z.enum(['all', 'linked', 'unlinked', 'blocked'])) });
+const pct = z.coerce.number().min(0).max(100);
+const certField = z.object({ show: z.boolean(), x: pct, y: pct, size: z.coerce.number().min(8).max(120), color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'สีไม่ถูกต้อง'), align: z.enum(['left', 'center', 'right']), bold: z.boolean() }).strict();
+const certText = z.preprocess((v) => clean(v) || '', z.string().max(200));
+export const certLayoutSchema = z.object({
+  texts: z.object({ title: certText, lead: certText, after: certText, signer: certText, signerTitle: certText }).strict(),
+  fields: z.object({ title: certField, lead: certField, name: certField, after: certField, course: certField, place: certField, dates: certField, issued: certField, number: certField, signer: certField, signerTitle: certField,
+    qr: z.object({ show: z.boolean(), x: pct, y: pct, size: z.coerce.number().min(40).max(200) }).strict() }).strict(),
+}).strict();
+const fromJson = (schema) => z.preprocess((v) => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } }, schema);
+export const certTemplateSchema = z.object({ name: text(100), courseId: z.preprocess((v) => v || null, id.nullable()), layout: fromJson(certLayoutSchema), removeImage: z.preprocess((v) => v === 'true' || v === true, z.boolean()).default(false) });
+export const certPreviewSchema = z.object({ layout: fromJson(certLayoutSchema) });
+export const certPrefixSchema = z.object({ prefix: z.preprocess(clean, z.string().regex(/^[A-Z0-9]{1,12}$/, 'ใช้ A-Z 0-9 ไม่เกิน 12 ตัว')) });
+export const idsSchema = z.object({ ids: z.array(id).min(1, 'เลือกอย่างน้อย 1 รายการ').max(300, 'เลือกได้ครั้งละไม่เกิน 300') });
+/** แก้ชื่อบนใบได้ทีละคน เช่นสะกดผิดตอนสมัคร */
+export const issueSchema = idsSchema.extend({ name: optionalText(200).optional() }).refine((v) => !v.name || v.ids.length === 1, { path: ['name'], message: 'แก้ชื่อได้ครั้งละ 1 คน' });
+export const revokeSchema = z.object({ reason: text(500, 3) });
+export const verifyCode = z.string().regex(/^[2-9A-HJ-NP-Z]{16}$/, 'รหัสใบประกาศไม่ถูกต้อง');
+export const certListSchema = z.object({ page: z.coerce.number().int().min(1).max(100000).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(20), q: filter(z.string().max(100)), status: filter(z.enum(['valid', 'revoked'])) });
+const markAction = z.enum(['in', 'out']);
+export const scanSchema = z.object({ token: z.string().max(200), action: markAction });
+export const manualSchema = z.object({ action: markAction, at: optDate.optional(), note: text(500, 3) });
+export const rosterSchema = z.object({ q: filter(z.string().max(100)), filter: filter(z.enum(['all', 'present', 'absent', 'ready', 'failing'])), day: filter(z.iso.date()) });
+export const undoSchema = z.object({ what: z.enum(['in', 'out']), reason: text(500, 3) });
+export const announceSchema = idsSchema.extend({ override: z.boolean().default(false), reason: optionalText(500).optional() });
 export const reviewSchema = z.object({ decision: z.enum(['approved', 'rejected']), reason: optionalText(500) })
   .refine((v) => v.decision === 'approved' || v.reason, { path: ['reason'], message: 'กรุณาระบุเหตุผล' });
 export const statusSchema = z.object({ status: z.string().max(30), expectedStatus: z.string().max(30), reason: optionalText(500) });

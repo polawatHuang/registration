@@ -22,7 +22,17 @@ export const queueNotice = ({ template, to, key, payload }, conn) => repo.enqueu
 export const retryNotice = (id, conn) => repo.retryNotice(id, conn);
 export const clearNotice = (id, conn) => repo.clearNotice(id, conn);
 
+/** ข้อความแจ้งสถานะทางอีเมล ผู้เรียกลงทะเบียนตัวสร้างเนื้อหาเอง เพื่อไม่ให้สอง service อ้างกันวน */
+let statusRenderer = async () => null;
+export const setStatusRenderer = (fn) => { statusRenderer = fn; };
+export const queueStatus = ({ applicationId, type, startsAt = null, key }, conn) => repo.enqueueStatus({ applicationId, key, payload: JSON.stringify({ type, startsAt }) }, conn);
+
 async function render(job, site) {
+  if (job.template === 'status') {
+    const app = await apps.findById(job.application_id);
+    const mail = app && await statusRenderer(job, app);
+    return mail ? { to: app.email, ...mail } : null;
+  }
   if (job.template.startsWith('erasure_')) return { to: decryptText(job.recipient_enc, 'email_recipient'), ...erasureEmail(job.template === 'erasure_approved', JSON.parse(job.payload_json), site) };
   const row = await apps.findById(job.application_id);
   return { to: row.email, ...registrationEmail(row, decryptText(row.national_id_enc, 'national_id'), site) };
@@ -40,8 +50,10 @@ export async function processQueue(limit = 10) {
   try {
     for (const job of jobs) {
       try {
+        const mail = await render(job, site);
+        if (!mail) { await repo.markCancelled(job.id, token); continue; }
         await transport.sendMail({
-          from: { name: config.smtp_from_name || 'E-Training', address: config.smtp_from_email }, ...(await render(job, site)),
+          from: { name: config.smtp_from_name || 'E-Training', address: config.smtp_from_email }, ...mail,
           // Message-ID คงที่: ถ้าส่งซ้ำหลังโปรเซสล่ม โปรแกรมอีเมลส่วนใหญ่จะรวมเป็นฉบับเดียว
           messageId: `<${sha256(job.idempotency_key).slice(0, 32)}@${new URL(env.APP_URL).hostname}>`, headers: { 'Auto-Submitted': 'auto-generated' },
         });

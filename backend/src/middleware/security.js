@@ -24,11 +24,14 @@ const limiter = (limit, minutes) => rateLimit({
   skip: () => env.isTest && process.env.ENABLE_RATE_LIMIT !== '1',
   handler: (_req, _res, next) => next(tooMany()),
 });
-export const apiLimiter = limiter(300, 5);
+/** วันอบรมผู้เข้าอบรมหลายร้อยคนใช้ Wi-Fi หรือ IP มือถือเดียวกัน เพดานต่อ IP จึงต้องสูงพอ */
+export const apiLimiter = limiter(3000, 5);
+/** ล็อกอินผ่าน LINE: LINE เป็นผู้ตรวจตัวตน ไม่มีรหัสให้เดา */
+export const lineLimiter = limiter(600, 15);
 /** หลังบ้าน: หน้าแชตถามข้อมูลใหม่ทุกไม่กี่วินาที และเจ้าหน้าที่หลายคนอาจใช้ IP เดียวกัน */
 export const chatLimiter = limiter(3000, 5);
 export const webhookLimiter = limiter(6000, 5);
-export const submitLimiter = limiter(15, 60);
+export const submitLimiter = limiter(60, 60);
 export const authLimiter = limiter(30, 15);
 
 /** กัน cross-site write: ถ้าเบราว์เซอร์ส่ง Origin มา ต้องเป็นเว็บเราเท่านั้น */

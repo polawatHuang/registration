@@ -32,7 +32,7 @@ export async function logout(req, res) {
 export const me = (req, res) => ok(res, {
   id: req.admin.id, username: req.admin.username, displayName: req.admin.display_name, role: req.admin.role_name, permissions: req.admin.permissions, csrfToken: req.admin.csrf_token,
 });
-export const dashboard = async (_req, res) => ok(res, await apps.dashboard());
+export const dashboard = async (req, res) => ok(res, await apps.dashboard(req.admin.permissions));
 
 export async function listApplications(req, res) {
   const f = parse(s.listSchema, req.query);
@@ -76,6 +76,9 @@ const created = async (res, promise) => ok(res, { id: await promise }, { status:
 const saved = async (res, promise) => { await promise; ok(res, {}, { message: 'บันทึกแล้ว' }); };
 export const createUniversity = (req, res) => created(res, catalog.createUniversity(parse(s.universitySchema, req.body), actor(req)));
 export const updateUniversity = (req, res) => saved(res, catalog.updateUniversity(idOf(req), parse(s.universitySchema, req.body), actor(req)));
+export const createCourse = (req, res) => created(res, catalog.createCourse(parse(s.courseSchema, req.body), actor(req)));
+export const updateCourse = (req, res) => saved(res, catalog.updateCourse(idOf(req), parse(s.courseSchema, req.body), actor(req)));
+export const deleteCourse = (req, res) => saved(res, catalog.deleteCourse(idOf(req), actor(req)));
 export const createOption = (req, res) => created(res, catalog.createOption(parse(s.optionSchema, req.body), actor(req)));
 export const updateOption = (req, res) => saved(res, catalog.updateOption(idOf(req), parse(s.optionSchema, req.body), actor(req)));
 export const createSession = (req, res) => created(res, catalog.createSession(parse(s.sessionSchema, req.body), actor(req)));

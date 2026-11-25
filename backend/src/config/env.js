@@ -23,6 +23,7 @@ const schema = z.object({
   DATA_ENCRYPTION_KEY: key32,
   DATA_HASH_KEY: key32,
   JOBS_SECRET: z.string().min(24),
+  JOBS_IN_APP: z.enum(['0', '1']).default('1').transform((v) => v === '1'),
   STORAGE_PATH: z.string().default('./storage'),
   MAX_UPLOAD_MB: z.coerce.number().min(1).max(20).default(5),
   LINE_LOGIN_CHANNEL_ID: opt,

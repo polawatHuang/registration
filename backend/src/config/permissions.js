@@ -3,6 +3,9 @@ export const PERMISSIONS = {
   'applicants.review': 'ตรวจเอกสารและเปลี่ยนสถานะ',
   'documents.view': 'เปิดเอกสารและข้อมูลส่วนบุคคลเต็ม',
   'applicants.export': 'ส่งออกข้อมูลผู้สมัคร',
+  'attendance.manage': 'เช็กชื่อ สแกน QR และดูรายงานการเข้าอบรม',
+  'attendance.result': 'ประกาศผลผ่าน/แก้บันทึกการเข้าอบรม',
+  'certificates.manage': 'ออกและเพิกถอนใบประกาศ จัดการแบบใบประกาศ',
   'chat.reply': 'อ่านและตอบแชต LINE OA เปิด/ปิด AI รายแชต',
   'chat.manage': 'เปิด/ปิด AI Chat Bot ทั้งระบบ',
   'notifications.manage': 'จัดการแจ้งเตือน LINE ข้อความ และส่งกลุ่ม',
@@ -16,7 +19,7 @@ export const PERMISSIONS = {
 };
 export const ROLES = {
   super_admin: { name: 'Super Admin', permissions: Object.keys(PERMISSIONS) },
-  admin: { name: 'Admin', permissions: ['applicants.view', 'applicants.review', 'documents.view', 'applicants.export', 'chat.reply', 'chat.manage', 'notifications.manage', 'catalog.manage', 'ai.manage', 'audit.view', 'settings.manage'] },
-  training_staff: { name: 'Training Staff', permissions: ['applicants.view', 'applicants.review', 'documents.view', 'chat.reply'] },
-  attendance_staff: { name: 'Attendance Staff', permissions: ['applicants.view'] },
+  admin: { name: 'Admin', permissions: ['applicants.view', 'applicants.review', 'documents.view', 'applicants.export', 'attendance.manage', 'attendance.result', 'certificates.manage', 'chat.reply', 'chat.manage', 'notifications.manage', 'catalog.manage', 'ai.manage', 'audit.view', 'settings.manage'] },
+  training_staff: { name: 'Training Staff', permissions: ['applicants.view', 'applicants.review', 'documents.view', 'attendance.manage', 'attendance.result', 'certificates.manage', 'chat.reply'] },
+  attendance_staff: { name: 'Attendance Staff', permissions: ['applicants.view', 'attendance.manage'] },
 };

@@ -7,7 +7,13 @@ import { guardAttempt } from './lockoutService.js';
 import { linkVerifiedApplicant } from './lineLoginService.js';
 import { queueRegistration, statusOf } from './emailService.js';
 import * as retention from './retentionService.js';
+import { summaryOf as certificateSummary } from './certificateService.js';
+import { qrUsable } from './attendanceService.js';
 import { requestOf } from '../repositories/retentionRepository.js';
+import { countAttended, dailyCheckins } from '../repositories/attendanceRepository.js';
+import { countValid } from '../repositories/certificateRepository.js';
+import { daily as notificationDaily } from '../repositories/notificationRepository.js';
+import { summary as aiSummary } from './aiReportService.js';
 import { getLegal } from './legalService.js';
 import { inspectDocument, readDocument, removeDocuments, storeDocument } from './storageService.js';
 import { decryptText, encryptText, keyedHash, randomCode } from '../utils/crypto.js';
@@ -31,7 +37,8 @@ async function storeAll(docs) {
 }
 const cleanup = (stored) => removeDocuments(stored.map((s) => s.storageName)).catch((err) => logger.error({ err: { message: err.message } }, 'orphan file cleanup failed'));
 
-async function changeStatus(app, to, { reason = null, actorType, actorId = null }, conn) {
+/** ทุกการเปลี่ยนสถานะผ่านที่นี่ เพื่อให้มีประวัติและเหตุการณ์แจ้งเตือนเสมอ */
+export async function changeStatus(app, to, { reason = null, actorType, actorId = null }, conn) {
   await repo.updateStatus(app.id, to, reason, conn);
   await repo.insertHistory({ applicationId: app.id, from: app.status, to, reason, actorType, actorId }, conn);
   await repo.insertEvent('application.status_changed', app.id, { from: app.status, to }, conn);
@@ -101,6 +108,7 @@ export function attachLine(applicationId, lineUserId, ip) {
     await repo.setLineUser(app.id, lineUserId, conn);
     const accountLinked = IDENTITY_VERIFIED.includes(app.status)
       && await linkVerifiedApplicant({ lineUserId, applicantId: app.applicant_id, method: 'verification' }, conn);
+    if (app.line_user_id !== lineUserId) await repo.insertEvent('line.linked', app.id, {}, conn);
     await insertAudit({ actorType: 'applicant', action: 'line.claim_application', entityType: 'application', entityId: app.id, ip, metadata: { lineUserId } }, conn);
     return { accountLinked };
   });
@@ -134,7 +142,7 @@ export async function applicantView(row) {
     location: row.location, mapUrl: row.map_url, details: row.session_details, submittedAt: row.submitted_at,
     status: row.status, statusLabel: STATUS_LABELS[row.status], statusReason: row.status_reason,
     timeline: { steps: TIMELINE, current: stopped ? null : TIMELINE_STEP[row.status], stopped, attention: row.status === 'documents_incomplete' },
-    erasure: await erasureView(row.id),
+    erasure: await erasureView(row.id), certificate: await certificateSummary(row.id), qrReady: qrUsable(row),
     canWithdrawSensitive: consents.some((c) => c.purpose === 'sensitive_id_card' && !c.withdrawn_at),
     documents: docs.map((d) => ({ type: d.doc_type, label: DOC_LABELS[d.doc_type], status: d.review_status, reason: d.review_reason, version: d.version,
       canReplace: row.status === 'documents_incomplete' && d.review_status === 'rejected' })),
@@ -258,7 +266,8 @@ export async function exportRows(filter, { adminId, ip }) {
   await insertAudit({ adminId, action: 'application.export', entityType: 'application', ip, metadata: { rows: rows.length, total, status: filter.status ?? null, sessionId: filter.sessionId ?? null } });
   return rows.map((r) => ({ ...listItem(r), email: r.email, shopAddress: r.shop_address, receiptName: r.receipt_name, receiptAddress: r.receipt_address }));
 }
-export async function dashboard() {
+export async function dashboard(permissions) {
   const d = await repo.dashboard();
-  return { ...d, statuses: d.statuses.map((s) => ({ ...s, label: STATUS_LABELS[s.status] })), total: d.statuses.reduce((t, s) => t + s.n, 0) };
+  const extra = { attendance: { total: await countAttended(), daily: await dailyCheckins() }, certificates: await countValid(), notifications: await notificationDaily(), ai: permissions.includes('ai.manage') ? await aiSummary() : null };
+  return { ...d, ...extra, statuses: d.statuses.map((s) => ({ ...s, label: STATUS_LABELS[s.status] })), total: d.statuses.reduce((t, s) => t + s.n, 0) };
 }

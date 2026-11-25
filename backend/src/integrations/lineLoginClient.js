@@ -39,9 +39,10 @@ const claimsSchema = z.object({
   nonce: z.string().optional(), name: z.string().optional(), picture: z.string().optional(),
 });
 /** ให้ LINE ตรวจลายเซ็น ID Token แล้วเราตรวจ claim ซ้ำอีกชั้น */
+/** nonce = null สำหรับ LIFF ซึ่ง SDK เป็นผู้ออกคำขอเอง token มีอายุ 1 ชั่วโมงและผูกกับ channel ของเรา */
 export async function verifyIdToken(config, idToken, nonce) {
-  const r = claimsSchema.safeParse(await post('/oauth2/v2.1/verify', { id_token: idToken, client_id: config.channelId, nonce }));
-  if (!r.success || r.data.aud !== config.channelId || r.data.nonce !== nonce || r.data.exp * 1000 < Date.now()) {
+  const r = claimsSchema.safeParse(await post('/oauth2/v2.1/verify', { id_token: idToken, client_id: config.channelId, ...(nonce === null ? {} : { nonce }) }));
+  if (!r.success || r.data.aud !== config.channelId || (nonce !== null && r.data.nonce !== nonce) || r.data.exp * 1000 < Date.now()) {
     throw new AppError(401, 'LINE_INVALID_TOKEN', 'ข้อมูลยืนยันตัวตนจาก LINE ไม่ถูกต้อง');
   }
   return r.data;

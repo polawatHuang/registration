@@ -118,6 +118,7 @@ function appPanel(a) {
           try { await send('POST', `/applications/me/${a.id}/withdraw-consent`); toast('ถอนความยินยอมแล้ว'); } catch (e) { toast(e.message, 'error'); }
           load();
         } }, 'ถอนความยินยอม')),
+        (a.qrReady || a.certificate) && h('div', { class: 'actions', style: { 'justify-content': 'flex-start' } }, a.qrReady && h('a', { class: 'btn btn-purple btn-sm', href: '/me.html?view=qr' }, icon('qr-code'), 'QR เข้าอบรม'), a.certificate && h('a', { class: 'btn btn-green btn-sm', href: '/me.html?view=certificates' }, icon('award-fill'), 'ใบประกาศ')),
         h('button', { class: 'btn btn-sm', type: 'button', style: { 'margin-top': '14px' }, onclick: () => savePass(a).catch(() => toast('บันทึกรูปไม่สำเร็จ', 'error')) }, icon('download'), 'บันทึกบัตรผู้สมัคร'),
         a.erasure?.status !== 'pending' && h('button', { class: 'btn btn-sm', type: 'button', style: { margin: '14px 0 0 8px' }, onclick: async () => {
           const note = await confirmDialog({ title: 'ขอลบข้อมูลของฉัน?', text: 'หากอนุมัติ ใบสมัครและเอกสารจะถูกลบถาวร คุณจะเสียสิทธิ์ในรุ่นนี้และเข้าหน้านี้ไม่ได้อีก ผลจะแจ้งทางอีเมล', confirm: 'ส่งคำขอ', danger: true, reason: true, placeholder: 'เหตุผลที่ขอลบ' });

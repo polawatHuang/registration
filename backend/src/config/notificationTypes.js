@@ -2,6 +2,7 @@
 export const VARIABLES = { name: 'ชื่อผู้สมัคร', application_no: 'เลขที่ใบสมัคร', course: 'หลักสูตร', university: 'มหาวิทยาลัย', session: 'รุ่น', date: 'วันอบรม', time: 'เวลาเริ่ม', location: 'สถานที่', status: 'สถานะล่าสุด', reason: 'เหตุผล' };
 const track = { label: 'ดูรายละเอียด', path: '/tracking.html' };
 export const APPLICANT_TYPES = {
+  linked: { title: 'เชื่อมบัญชี LINE สำเร็จ', tone: 'green', heading: 'เชื่อมบัญชีเรียบร้อย 🔗', body: 'สวัสดีคุณ{{name}} ใบสมัคร {{application_no}} เชื่อมกับ LINE นี้แล้ว จะได้รับแจ้งทุกความคืบหน้าที่นี่', button: { label: 'เปิดพื้นที่ของฉัน', path: '/me.html' } },
   submitted: { title: 'สมัครสำเร็จ', tone: 'green', heading: 'เมล็ดของคุณลงดินแล้ว 🌱', body: 'สวัสดีคุณ{{name}} เราได้รับใบสมัคร {{application_no}} แล้ว เจ้าหน้าที่จะตรวจเอกสารต่อจากนี้', button: track },
   documents_received: { title: 'ได้รับเอกสารใหม่', tone: 'purple', heading: 'ได้รับเอกสารแล้ว', body: 'คุณ{{name}} เราได้รับเอกสารที่ส่งใหม่แล้ว กำลังตรวจให้อีกครั้ง', button: track },
   documents_incomplete: { title: 'เอกสารไม่ครบ', tone: 'orange', status: 'documents_incomplete', heading: 'ต้นกล้าต้องการน้ำอีกนิด 💧', body: 'คุณ{{name}} มีเอกสารที่ต้องแก้ไข\n{{reason}}', button: { label: 'ส่งเอกสารใหม่', path: '/tracking.html' } },
@@ -13,7 +14,7 @@ export const APPLICANT_TYPES = {
   reminder_hour: { title: 'เตือนก่อนเริ่มอบรม', tone: 'orange', heading: 'อีกไม่นานจะเริ่มอบรม ⏰', body: 'คุณ{{name}} เริ่มเวลา {{time}} น. {{location}}', button: track },
   evaluation: { title: 'ส่งแบบประเมิน', tone: 'purple', heading: 'ขอเสียงของคุณหน่อย 💬', body: 'ขอบคุณคุณ{{name}}ที่เข้าอบรม {{session}} ช่วยประเมินเพื่อให้เราพัฒนาต่อ', button: { label: 'ทำแบบประเมิน', path: 'evaluation' } },
   passed: { title: 'ผ่านการอบรม', tone: 'green', status: 'passed', heading: 'คุณผ่านการอบรม 🏆', body: 'ยินดีด้วยคุณ{{name}} กำลังจัดทำใบประกาศนียบัตร', button: track },
-  certified: { title: 'ออกใบประกาศแล้ว', tone: 'green', status: 'certified', heading: 'ดอกไม้บานแล้ว 🌸', body: 'คุณ{{name}} ใบประกาศนียบัตรของคุณพร้อมแล้ว', button: track },
+  certified: { title: 'ออกใบประกาศแล้ว', tone: 'green', status: 'certified', heading: 'ดอกไม้บานแล้ว 🌸', body: 'คุณ{{name}} ใบประกาศนียบัตรของคุณพร้อมแล้ว', button: { label: 'ดูใบประกาศ', path: '/me.html?view=certificates' } },
 };
 export const STATUS_TO_TYPE = Object.fromEntries(Object.entries(APPLICANT_TYPES).filter(([, t]) => t.status).map(([k, t]) => [t.status, k]));
 /** แจ้งเจ้าหน้าที่: ส่งเฉพาะผู้ที่ยังมีสิทธิ์เกี่ยวข้อง และรวมเหตุการณ์ในช่วง window วินาทีเป็นข้อความเดียว */

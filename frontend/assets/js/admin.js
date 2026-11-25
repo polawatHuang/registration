@@ -2,7 +2,7 @@ import { get, send } from './api.js';
 import { $, h, icon } from './ui.js';
 
 export const MENU = [
-  ['dashboard', 'grid-1x2-fill', 'ภาพรวม', 'applicants.view'], ['applications', 'people-fill', 'ผู้สมัคร', 'applicants.view'], ['chat', 'chat-dots-fill', 'แชต', 'chat.reply'], ['notifications', 'bell-fill', 'แจ้งเตือน', 'notifications.manage'], ['catalog', 'ui-checks', 'ตัวเลือกฟอร์ม', 'catalog.manage'],
+  ['dashboard', 'grid-1x2-fill', 'ภาพรวม', 'applicants.view'], ['applications', 'people-fill', 'ผู้สมัคร', 'applicants.view'], ['attendance', 'qr-code-scan', 'เช็กชื่อ', 'attendance.manage'], ['certificates', 'award-fill', 'ใบประกาศ', 'certificates.manage'], ['chat', 'chat-dots-fill', 'แชต', 'chat.reply'], ['notifications', 'bell-fill', 'แจ้งเตือน', 'notifications.manage'], ['line', 'line', 'LINE OA', 'notifications.manage'], ['catalog', 'ui-checks', 'ตัวเลือกฟอร์ม', 'catalog.manage'],
   ['ai-knowledge', 'robot', 'คลัง AI', 'ai.manage'], ['users', 'person-badge-fill', 'ผู้ใช้', 'users.manage'], ['retention', 'trash3-fill', 'ลบข้อมูล', 'retention.manage'], ['audit-logs', 'shield-lock-fill', 'บันทึก', 'audit.view'], ['settings', 'gear-fill', 'ตั้งค่า', 'settings.manage'],
 ];
 export const STATUS = { submitted: ['warn', 'สมัครสำเร็จ รอตรวจเอกสาร'], under_review: ['info', 'กำลังตรวจสอบเอกสาร'], documents_incomplete: ['bad', 'เอกสารไม่ครบ/ต้องแก้ไข'], documents_approved: ['ok', 'เอกสารผ่านการตรวจสอบ'], approved: ['ok', 'อนุมัติการสมัคร'],
@@ -80,7 +80,7 @@ export function formDialog({ title, fields, values = {}, onSave, submit }) {
     if (f.type === 'checkbox') { inputs[f.name] = h('input', { type: 'checkbox', checked: Boolean(v) }); return h('label', { class: 'chk wide' }, inputs[f.name], f.label); }
     const common = { class: 'input', name: f.name, required: f.required };
     inputs[f.name] = f.type === 'select' ? h('select', common, f.options.map(([ov, ol]) => h('option', { value: ov, selected: String(ov) === String(v) }, ol)))
-      : f.type === 'textarea' ? h('textarea', { ...common, rows: 3, value: v }) : h('input', { ...common, type: f.type ?? 'text', value: v, min: f.min, autocomplete: f.type === 'password' ? 'new-password' : 'off' });
+      : f.type === 'textarea' ? h('textarea', { ...common, rows: 3, value: v }) : h('input', { ...common, type: f.type ?? 'text', value: v, min: f.min, step: f.step, placeholder: f.placeholder, autocomplete: f.type === 'password' ? 'new-password' : 'off' });
     errs[f.name] = h('span', { class: 'e', role: 'alert' });
     return h('label', { class: `fld ${f.wide ? 'wide' : ''}` }, h('span', {}, f.label, f.required && h('b', { class: 'e' }, ' *')), inputs[f.name], f.hint && h('small', { class: 'muted' }, f.hint), errs[f.name]);
   });

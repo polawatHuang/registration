@@ -13,7 +13,7 @@ import { endSession, issueSession } from '../services/applicantSessionService.js
 import { activeLinkOfLine } from '../repositories/lineRepository.js';
 import { cookieOptions } from '../middleware/adminAuth.js';
 import { parse } from '../middleware/validate.js';
-import { accessSchema, applicationSchema, erasureSchema, id } from '../utils/schemas.js';
+import { accessSchema, applicationSchema, erasureSchema, id, liffSchema } from '../utils/schemas.js';
 import { AppError, forbidden } from '../utils/errors.js';
 import { safeEqual } from '../utils/crypto.js';
 import { ok } from '../utils/response.js';
@@ -103,8 +103,16 @@ export async function lineCallback(req, res) {
     res.redirect(302, `/tracking.html?line=${encodeURIComponent(err.code)}`);
   }
 }
+export async function liffSession(req, res) {
+  const lineUserId = await line.liffLogin(parse(liffSchema, req.body).idToken, req.ip);
+  if (req.applicant?.application_id) await apps.attachLine(req.applicant.application_id, lineUserId, req.ip);
+  const csrfToken = await issueSession(res, req.applicant, { lineUserId });
+  ok(res, { csrfToken });
+}
+export const schedule = async (_req, res) => ok(res, await catalog.publicSchedule());
 export async function linkAccount(req, res) {
   const r = await apps.claimForLine(parse(accessSchema, req.body), req.applicant.line_user_id, req.ip);
+  notify();
   ok(res, r, { message: r.accountLinked ? 'เชื่อมบัญชี LINE สำเร็จ' : 'เพิ่มใบสมัครเข้าบัญชี LINE แล้ว จะเชื่อมข้อมูลบุคคลเมื่อเอกสารผ่านการตรวจ' });
 }
 export async function unlinkAccount(req, res) {

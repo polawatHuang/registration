@@ -3,7 +3,7 @@ export const STATUS_LABELS = {
   documents_approved: 'เอกสารผ่านการตรวจสอบ', approved: 'อนุมัติการสมัคร', awaiting_training: 'รอเข้ารับการอบรม', attended: 'เข้าอบรมแล้ว',
   passed: 'ผ่านการอบรม', certified: 'ได้รับใบประกาศนียบัตร', rejected: 'ไม่ผ่านการอนุมัติ', cancelled: 'ยกเลิก',
 };
-/** ขั้นที่เจ้าหน้าที่เปลี่ยนเองได้ ส่วน attended/passed/certified มาจากระบบเช็กชื่อและใบประกาศ (รอบ 4) */
+/** ขั้นที่เจ้าหน้าที่เปลี่ยนเองได้ ส่วน attended/passed/certified มาจากระบบเช็กชื่อและใบประกาศ  */
 export const ADMIN_TRANSITIONS = {
   submitted: ['under_review', 'documents_incomplete', 'documents_approved', 'rejected', 'cancelled'],
   under_review: ['documents_incomplete', 'documents_approved', 'rejected', 'cancelled'],

@@ -51,5 +51,25 @@
 `GET /state` · `PUT /settings` · `GET/POST /templates`, `PUT/DELETE /templates/:key` · `POST /preview`, `/test` · `GET /queue`, `/queue/:id/logs`, `POST /queue/:id` (retry/cancel) · `POST /campaigns/estimate`, `GET/POST /campaigns`, `POST /campaigns/:id/cancel` · `GET /recipients`, `PUT /recipients/:id`
 `POST /link-code`, `/unlink` ใช้ได้ทุกคนที่ล็อกอิน (เชื่อม LINE ของตัวเอง)
 
+## เช็กชื่อ (`/admin/attendance`, สิทธิ์ attendance.manage)
+`GET /sessions` · `GET /sessions/:id/roster` (filter all/present/absent/ready/failing, q, day) · `GET /sessions/:id/export`, `/scans` · `POST /sessions/:id/scan {token, action: in|out}` · `GET /sessions/:id/people/:appId`, `/portrait` · `POST /sessions/:id/people/:appId {action, at?, note}`
+ต้องมี attendance.result: `POST /sessions/:id/announce {ids, override, reason}` · `POST /records/:id/undo {what, reason}`
+ผลสแกน: ok · already · not_in · wrong_session · wrong_day · unauthorized · revoked · invalid
+
+## ใบประกาศ (`/admin/certificates`, สิทธิ์ certificates.manage)
+`GET /`, `GET /:id/pdf`, `POST /:id/revoke` · `GET /candidates/:sessionId`, `POST /issue {ids}` · `GET/POST /templates`, `PUT|POST|DELETE /templates/:id`, `POST /templates[/:id]/preview` · `PUT /prefix`
+สาธารณะ: `GET /certificates/verify/:code` และหน้า `/certificate/verify/:code`
+
+## พื้นที่ผู้สมัครและ LIFF
+`POST /auth/liff/session {idToken}` · `GET /applications/me/:id/qr`, `/qr.svg`, `POST /qr/renew` · `GET /applications/me/:id/attendance`, `/certificate.pdf` · `GET /catalog/schedule`
+
+## LINE OA (`/admin/line`, สิทธิ์ notifications.manage)
+`GET /state`, `/users` · `POST|DELETE /rich-menu` · `PUT /welcome`
+
+## AI (`/ai`, สิทธิ์ ai.manage)
+`GET /report`, `/history` · `POST /report/resolve {ids}` · `PUT /settings`
+
+## หลักสูตร (`/admin/catalog/courses`) `POST`, `PUT|DELETE /:id`
+
 ## งานตั้งเวลา
 `POST /internal/jobs/run` พร้อม header `X-Jobs-Secret` · 200 เมื่อทุกงานสำเร็จ · 500 `JOBS_FAILED` พร้อมชื่องานและรหัสสาเหตุเมื่อมีงานล้ม (งานอื่นยังทำต่อ) · 403 secret ไม่ตรง

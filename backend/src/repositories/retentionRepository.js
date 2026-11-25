@@ -54,7 +54,9 @@ export async function deleteApplication(app, conn) {
   const id = app.id;
   await purgeDocumentFiles(id, conn);
   await notifications.deleteForApplication(id, conn);
-  for (const sql of ['DELETE FROM email_queue WHERE application_id = :id', 'DELETE FROM consents WHERE application_id = :id', 'DELETE FROM application_documents WHERE application_id = :id',
+  for (const sql of ['DELETE FROM attendance_records WHERE application_id = :id', 'DELETE FROM attendance_scans WHERE application_id = :id', 'DELETE FROM attendance_qr WHERE application_id = :id',
+    'UPDATE certificates SET application_id = NULL, holder_name = NULL, revoke_reason = NULL WHERE application_id = :id',
+    'DELETE FROM email_queue WHERE application_id = :id', 'DELETE FROM consents WHERE application_id = :id', 'DELETE FROM application_documents WHERE application_id = :id',
     'DELETE FROM application_status_history WHERE application_id = :id', 'DELETE FROM applicant_sessions WHERE application_id = :id',
     "DELETE FROM domain_events WHERE aggregate_type = 'application' AND aggregate_id = :id",
     "UPDATE admin_audit_logs SET metadata_json = NULL, ip_address = CASE WHEN actor_type = 'applicant' THEN NULL ELSE ip_address END WHERE entity_type = 'application' AND entity_id = CAST(:id AS CHAR)",
@@ -79,7 +81,8 @@ export async function deleteLineUser(id, conn) {
   for (const sql of ['DELETE FROM applicant_sessions WHERE line_user_id = :id', 'DELETE FROM line_account_links WHERE line_user_id = :id',
     "UPDATE admin_audit_logs SET metadata_json = NULL, ip_address = NULL WHERE entity_type = 'line_user' AND entity_id = CAST(:id AS CHAR)", 'DELETE FROM line_users WHERE id = :id']) await query(sql, { id }, conn);
 }
-export const deleteLogs = async (limit, conn) => (await query(`DELETE FROM admin_audit_logs WHERE ${LOG_WHERE} LIMIT 20000`, { limit }, conn)).affectedRows + await notifications.deleteOld(limit, conn);
+export const deleteLogs = async (limit, conn) => (await query(`DELETE FROM admin_audit_logs WHERE ${LOG_WHERE} LIMIT 20000`, { limit }, conn)).affectedRows + await notifications.deleteOld(limit, conn)
+  + (await query(`DELETE FROM attendance_scans WHERE ${LOG_WHERE} LIMIT 20000`, { limit }, conn)).affectedRows;
 
 export const insertPurgeLog = (p, conn) => query(`INSERT INTO purge_log (kind, reason, ref, session_id, final_status, item_count, approved_by, created_at)
   VALUES (:kind, :reason, :ref, :sessionId, :status, :count, :adminId, UTC_TIMESTAMP())`, { ref: null, sessionId: null, status: null, count: 1, adminId: null, ...p }, conn);
