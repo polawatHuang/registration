@@ -634,7 +634,10 @@ describe('ลบข้อมูล', () => {
     assert.equal(mine.documents.find((x) => x.type === 'id_card').canReplace, true);
     const fd = new FormData(); fd.append('id_card', new Blob([PNG]), 'n.png');
     assert.equal((await r.client.request('POST', `/api/v1/applications/me/${id}/documents`, { form: fd })).body.data.status, 'under_review');
-    assert.equal((await purge(admin, 'withdrawn', [id])).body.data.purged, 0); // ภาพใหม่ไม่ถูกลบ
+    // ภาพใหม่ไม่ถูกลบ แม้ถอนความยินยอมในวินาทีเดียวกัน (ห่างกัน 1 มิลลิวินาที)
+    await s.query("UPDATE application_documents SET created_at = '2026-01-01 00:00:00.300' WHERE application_id = :id AND doc_type = 'id_card' AND is_current = 1", { id });
+    await s.query("UPDATE consents SET withdrawn_at = '2026-01-01 00:00:00.299' WHERE application_id = :id AND purpose = 'sensitive_id_card'", { id });
+    assert.equal((await purge(admin, 'withdrawn', [id])).body.data.purged, 0);
   });
 
   test('คำขอลบ: 90 วัน, ซ้ำไม่ได้, ยกเลิกได้, ปฏิเสธพร้อมเหตุผล, อนุมัติแล้วลบและอีเมลแจ้งผล', async () => {
@@ -983,6 +986,35 @@ describe('รวมแชต LINE OA', () => {
     const [l] = await s.query('SELECT id FROM line_users WHERE line_user_id = :u', { u });
     assert.equal((await purge('line_users', [l.id])).body.data.purged, 1);
     assert.equal((await s.query('SELECT COUNT(*) n FROM chat_messages WHERE conversation_id = :id', { id: c.id }))[0].n, 0);
+  });
+});
+
+describe('ความทนทานเมื่อใช้พร้อมกัน', () => {
+  test('คำสั่งเดี่ยวที่แพ้ deadlock ถูกลองใหม่จนสำเร็จ', async () => {
+    const { pool, query } = await import('../src/config/db.js');
+    await query("INSERT INTO auth_attempts (scope, key_hash) VALUES ('dl', 'a'), ('dl', 'b'), ('dl', 'c'), ('dl', 'd'), ('dl', 'e')");
+    const ids = (await query("SELECT id FROM auth_attempts WHERE scope = 'dl' ORDER BY id")).map((r) => r.id);
+    const rival = await pool.getConnection();
+    try {
+      await rival.beginTransaction();
+      // แก้หลายแถวก่อน ให้ฐานข้อมูลเลือกคำสั่งเดี่ยวเป็นผู้แพ้แน่นอน
+      await rival.query('UPDATE auth_attempts SET key_hash = ? WHERE id IN (?)', ['rival', ids.slice(1)]);
+      const single = query('UPDATE auth_attempts SET scope = :scope WHERE id IN (:ids)', { scope: 'dl-done', ids: ids.slice(0, 2) });
+      const outcome = single.then(() => 'ok', (e) => e.code);
+      await new Promise((r) => setTimeout(r, 300));
+      await rival.query('UPDATE auth_attempts SET key_hash = ? WHERE id = ?', ['rival', ids[0]]);
+      await rival.commit();
+      assert.equal(await outcome, 'ok');
+    } finally { rival.release(); }
+    assert.equal((await query("SELECT COUNT(*) n FROM auth_attempts WHERE scope = 'dl-done'"))[0].n, 2);
+    await query("DELETE FROM auth_attempts WHERE scope LIKE 'dl%'");
+  });
+  test('ล้างตัวนับไม่สำเร็จไม่ทำให้ผู้ใส่รหัสถูกเข้าไม่ได้ และใช้พร้อมกันได้', async () => {
+    await s.query('DELETE FROM auth_attempts');
+    const { guardAttempt } = await import('../src/services/lockoutService.js');
+    const r = await Promise.allSettled(Array.from({ length: 40 }, async (_, i) => { const clear = await guardAttempt('stress', [`u${i % 2}`, 'ip:same'], [1000, 1000]); await clear(); }));
+    assert.deepEqual(r.filter((x) => x.status === 'rejected').map((x) => x.reason.code), []);
+    assert.equal((await s.query("SELECT COUNT(*) n FROM auth_attempts WHERE scope = 'stress'"))[0].n, 0);
   });
 });
 

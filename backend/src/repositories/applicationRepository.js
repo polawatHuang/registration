@@ -30,7 +30,7 @@ export const insertApplication = async (a, conn) => (await query(`INSERT INTO ap
 export const insertConsent = (c, conn) => query(`INSERT INTO consents (application_id, purpose, notice_version, ip_address, accepted_at)
   VALUES (:applicationId, :purpose, :version, :ip, UTC_TIMESTAMP())`, c, conn);
 export const consentsOf = (id) => query('SELECT purpose, notice_version, accepted_at, withdrawn_at FROM consents WHERE application_id = :id ORDER BY id', { id });
-export const withdrawConsent = (id, purpose, conn) => query('UPDATE consents SET withdrawn_at = UTC_TIMESTAMP() WHERE application_id = :id AND purpose = :purpose AND withdrawn_at IS NULL', { id, purpose }, conn);
+export const withdrawConsent = (id, purpose, conn) => query('UPDATE consents SET withdrawn_at = UTC_TIMESTAMP(3) WHERE application_id = :id AND purpose = :purpose AND withdrawn_at IS NULL', { id, purpose }, conn);
 export const insertHistory = (h, conn) => query(`INSERT INTO application_status_history (application_id, from_status, to_status, reason, actor_type, actor_id)
   VALUES (:applicationId, :from, :to, :reason, :actorType, :actorId)`, h, conn);
 export const insertEvent = (type, applicationId, payload, conn) => query(`INSERT INTO domain_events (event_type, aggregate_type, aggregate_id, payload_json)

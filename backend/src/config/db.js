@@ -9,16 +9,22 @@ export const pool = mysql.createPool({
 // ทุก connection ทำงานเป็น UTC (NOW() = UTC) ไม่ขึ้นกับเวลาของเครื่อง hosting
 pool.on('connection', (c) => c.query("SET time_zone = '+00:00'"));
 
+const pause = (attempt) => new Promise((r) => { setTimeout(r, 15 * 2 ** attempt + Math.random() * 20); });
+const RETRYABLE = new Set(['ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT']);
+/** คำสั่งเดี่ยวนอก transaction: ผู้แพ้ deadlock ถูกย้อนทั้งคำสั่ง จึงลองใหม่ได้ ส่วนใน transaction ให้ withTransaction เริ่มใหม่ทั้งชุด */
 export async function query(sql, params = {}, conn = pool) {
-  const [rows] = await conn.query(sql, params);
-  return rows;
+  for (let attempt = 0; ; attempt += 1) {
+    try { return (await conn.query(sql, params))[0]; } catch (err) {
+      if (conn !== pool || err.code !== 'ER_LOCK_DEADLOCK' || attempt >= 4) throw err;
+      await pause(attempt);
+    }
+  }
 }
 export async function queryOne(sql, params = {}, conn = pool) {
   return (await query(sql, params, conn))[0] ?? null;
 }
 
-const RETRYABLE = new Set(['ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT']);
-export async function withTransaction(fn, { retries = 3 } = {}) {
+export async function withTransaction(fn, { retries = 4 } = {}) {
   for (let attempt = 0; ; attempt += 1) {
     const conn = await pool.getConnection();
     try {
@@ -28,10 +34,10 @@ export async function withTransaction(fn, { retries = 3 } = {}) {
       return result;
     } catch (err) {
       await conn.rollback().catch(() => {});
-      if (RETRYABLE.has(err.code) && attempt < retries) continue;
-      throw err;
+      if (!RETRYABLE.has(err.code) || attempt >= retries) throw err;
     } finally {
       conn.release();
     }
+    await pause(attempt); // หลังคืน connection แล้ว ไม่ให้ pool ตันระหว่างรอ
   }
 }
