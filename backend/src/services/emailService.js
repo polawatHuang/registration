@@ -8,7 +8,7 @@ import { getSettings } from '../repositories/catalogRepository.js';
 import { insertAudit } from '../repositories/auditRepository.js';
 import { createTransport, explainMailError } from '../integrations/mailer.js';
 import { emailConfig } from './integrationService.js';
-import { erasureEmail, registrationEmail } from './emailTemplates.js';
+import { alertEmail, erasureEmail, registrationEmail } from './emailTemplates.js';
 import { decryptText, encryptText, sha256 } from '../utils/crypto.js';
 import { notFound, tooMany } from '../utils/errors.js';
 
@@ -33,6 +33,7 @@ async function render(job, site) {
     const mail = app && await statusRenderer(job, app);
     return mail ? { to: app.email, ...mail } : null;
   }
+  if (job.template === 'ai_alert') return { to: decryptText(job.recipient_enc, 'email_recipient'), ...alertEmail(JSON.parse(job.payload_json)) };
   if (job.template.startsWith('erasure_')) return { to: decryptText(job.recipient_enc, 'email_recipient'), ...erasureEmail(job.template === 'erasure_approved', JSON.parse(job.payload_json), site) };
   const row = await apps.findById(job.application_id);
   return { to: row.email, ...registrationEmail(row, decryptText(row.national_id_enc, 'national_id'), site) };

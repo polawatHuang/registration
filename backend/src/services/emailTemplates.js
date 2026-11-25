@@ -7,6 +7,12 @@ const plain = (v) => String(v ?? '').replace(/https?:\/\//gi, '').replace(/[.@](
 const D = new Intl.DateTimeFormat('th-TH', { dateStyle: 'long', timeZone: 'Asia/Bangkok' });
 const T = new Intl.DateTimeFormat('th-TH', { timeStyle: 'short', timeZone: 'Asia/Bangkok' });
 
+/** แจ้งเตือนภายในถึงผู้ดูแล ไม่มีข้อมูลผู้สมัคร */
+export function alertEmail({ subject, lines, url }) {
+  const font = "font-family:Prompt,'Sukhumvit Set','Leelawadee UI',Tahoma,sans-serif";
+  const html = `<!doctype html><html lang="th"><head><meta charset="utf-8"></head><body style="margin:0;background:#efe8fb;${font};color:#202124"><table role="presentation" width="100%"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="100%" style="max-width:560px;background:#fff;border-radius:22px;overflow:hidden" cellpadding="0" cellspacing="0"><tr><td bgcolor="#6a4fc0" style="background:linear-gradient(135deg,#6a4fc0,#2c1f63);padding:26px 28px;color:#fff;font-size:21px;font-weight:700;${font}">${esc(subject)}</td></tr><tr><td style="padding:22px 28px;font-size:16px;line-height:1.7;${font}">${lines.filter(Boolean).map((l) => `<p style="margin:0 0 8px">${esc(l)}</p>`).join('')}<p style="margin:18px 0 0"><a href="${esc(url)}" style="display:inline-block;background:#168447;color:#fff;text-decoration:none;font-weight:700;padding:12px 28px;border-radius:999px">เปิดหน้าเครดิต AI</a></p></td></tr></table></td></tr></table></body></html>`;
+  return { subject: `[E-Training] ${subject}`, html, text: [subject, '', ...lines.filter(Boolean), url].join('\n') };
+}
 export function erasureEmail(done, { code, reason }, site) {
   const contact = [site.contact_phone && `โทร ${site.contact_phone}`, site.contact_email && `อีเมล ${site.contact_email}`].filter(Boolean).join(' · ');
   const lines = done

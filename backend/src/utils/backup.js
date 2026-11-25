@@ -29,6 +29,7 @@ export async function backup() {
   const tmp = path.join(BACKUP_DIR, `${name}.part`);
   const conn = await pool.getConnection();
   const counts = {};
+  let source = null;
   const lock = `lst_backup_${crypto.createHash('sha256').update(env.DB_NAME).digest('hex').slice(0, 32)}`;
   const [[{ ok }]] = await conn.query('SELECT GET_LOCK(?, 0) AS ok', [lock]);
   if (Number(ok) !== 1) { conn.release(); throw Object.assign(new Error('กำลังสำรองอยู่แล้ว'), { code: 'BACKUP_RUNNING' }); }
@@ -37,7 +38,7 @@ export async function backup() {
     await conn.query('START TRANSACTION WITH CONSISTENT SNAPSHOT'); // ทุกตารางเห็นข้อมูลเวลาเดียวกัน
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', KEY, iv);
-    const source = new PassThrough();
+    source = new PassThrough();
     const out = fs.createWriteStream(tmp, { mode: 0o600, flags: 'wx' });
     out.write(Buffer.concat([MAGIC, iv]));
     const sink = new Writable({ write(c, _e, cb) { if (out.write(c)) cb(); else out.once('drain', cb); }, final(cb) { out.end(cipher.getAuthTag(), cb); } });
@@ -70,6 +71,7 @@ export async function backup() {
     await conn.query('COMMIT');
     await fsp.rename(tmp, path.join(BACKUP_DIR, name));
   } catch (err) {
+    source?.destroy(err); // ปิดไฟล์และ stream ที่เปิดค้าง
     await conn.query('ROLLBACK').catch(() => {});
     await fsp.rm(tmp, { force: true });
     throw err;

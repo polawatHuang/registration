@@ -102,7 +102,10 @@ export async function processEvents() {
         else if (e.event_type === 'attendance.checked_in') {
           await adminEvent('checked_in', conn);
           if ((await settings()).checkin) await applicantEvent(e, 'checked_in', conn, { payload: JSON.stringify({ recordId: payload.recordId }), expires: new Date(Date.now() + 2 * 3_600_000) });
-        } else if (e.event_type === 'system.backup_failed') await adminEvent('backup_failed', conn);
+        } else if (e.event_type === 'ai.unavailable') await adminEvent('ai_unavailable', conn);
+        else if (e.event_type === 'ai.credit_low') await adminEvent('ai_credit_low', conn);
+        else if (e.event_type === 'ai.recovered') await adminEvent('ai_recovered', conn);
+        else if (e.event_type === 'system.backup_failed') await adminEvent('backup_failed', conn);
         else if (e.event_type === 'line.linked') await applicantEvent(e, 'linked', conn);
         else if (e.event_type === 'chat.help_requested') await adminEvent('help_requested', conn);
         else if (e.event_type === 'chat.ai_unanswered') await adminEvent('ai_unanswered', conn);

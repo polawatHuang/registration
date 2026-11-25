@@ -67,7 +67,7 @@
 `GET /state`, `/users` · `POST|DELETE /rich-menu` · `PUT /welcome`
 
 ## AI (`/ai`, สิทธิ์ ai.manage)
-`GET /report`, `/history` · `POST /report/resolve {ids}` · `PUT /settings`
+`GET /credit` · `POST /credit {kind: balance|topup, amount}` · `PUT /credit/options` · `POST /credit/check` · `GET /report`, `/history` · `POST /report/resolve {ids}` · `PUT /settings`
 
 ## หลักสูตร (`/admin/catalog/courses`) `POST`, `PUT|DELETE /:id`
 

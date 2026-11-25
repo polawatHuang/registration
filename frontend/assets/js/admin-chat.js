@@ -26,7 +26,7 @@ const paintSound = () => $('#snd').replaceChildren(icon(S.sound ? 'bell-fill' : 
 function paintAi(on) {
   aiSwitch.checked = on;
   bar.classList.toggle('on', on);
-  aiText.textContent = !S.state?.lineReady ? 'ยังไม่ได้ตั้งค่า LINE Messaging API' : !S.state.aiReady ? 'ยังไม่ได้ตั้งค่า MiniMax' : on ? 'กำลังตอบลูกค้าอัตโนมัติจากคลังความรู้' : 'ปิดอยู่ เจ้าหน้าที่ตอบเองทั้งหมด';
+  aiText.textContent = S.state?.aiHealth?.text && on ? `หยุดชั่วคราว: ${S.state.aiHealth.text} ส่งต่อเจ้าหน้าที่แทน` : !S.state?.lineReady ? 'ยังไม่ได้ตั้งค่า LINE Messaging API' : !S.state.aiReady ? 'ยังไม่ได้ตั้งค่า MiniMax' : on ? 'กำลังตอบลูกค้าอัตโนมัติจากคลังความรู้' : 'ปิดอยู่ เจ้าหน้าที่ตอบเองทั้งหมด';
   aiSwitch.disabled = !can('chat.manage') || (!on && !S.state?.aiReady);
 }
 async function setGlobal(on) {

@@ -8,6 +8,8 @@ import { getSettings, setSetting } from '../repositories/catalogRepository.js';
 import { insertAudit } from '../repositories/auditRepository.js';
 import { answer } from './aiService.js';
 import { aiSettings } from './aiReportService.js';
+import { health } from './aiHealthService.js';
+import { KIND_TEXT } from '../config/minimaxErrors.js';
 import { command, kick as notify } from './notificationService.js';
 import { insertEvent } from '../repositories/notificationRepository.js';
 import { CONTACT_DATA, viewUrl, WELCOME_KEYS } from './richMenuService.js';
@@ -208,8 +210,8 @@ async function maybeAnswer(conversationId, messageId, text, at, lineUid) {
     line.loading(lineUid);
     const r = await answer(text.slice(0, 500), { channel: 'line', conversationId });
     const meta = { mode: r.mode, sources: (r.sources ?? []).slice(0, 5).map((s) => s.title.slice(0, 80)), tokens: r.tokens ?? null };
-    if (r.answer) await sendAi(conversationId, messageId, r.answer, meta, { attention: ['fallback', 'error', 'limit'].includes(r.mode) ? (r.mode === 'error' ? 'MiniMax ขัดข้อง' : r.mode === 'limit' ? 'ใช้ token ครบเพดานเดือนนี้' : 'AI ไม่มีข้อมูลตอบ') : null });
-    else await callStaff(conversationId, 'AI ไม่มีข้อมูลตอบ');
+    if (r.answer) await sendAi(conversationId, messageId, r.answer, meta, { attention: ['fallback', 'error', 'limit', 'offline'].includes(r.mode) ? (r.mode === 'offline' ? 'AI หยุดชั่วคราว' : r.mode === 'error' ? 'MiniMax ขัดข้อง' : r.mode === 'limit' ? 'ใช้ token ครบเพดานเดือนนี้' : 'AI ไม่มีข้อมูลตอบ') : null });
+    else await callStaff(conversationId, ['offline', 'limit'].includes(r.mode) ? 'AI หยุดชั่วคราว' : 'AI ไม่มีข้อมูลตอบ');
   }
   await repo.aiDone(messageId);
 }
@@ -236,8 +238,8 @@ const messageView = (m) => ({ id: m.id, direction: m.direction, sender: m.sender
 const PAGE = 40;
 
 export async function state() {
-  const [enabled, aiReady, lineReady] = await Promise.all([aiEnabled(), isConfigured(), line.isReady()]);
-  return { aiEnabled: enabled, aiReady, lineReady, quota: lineReady ? await line.quota() : null, webhookUrl: env.lineWebhookUrl };
+  const [enabled, aiReady, lineReady, h] = await Promise.all([aiEnabled(), isConfigured(), line.isReady(), health()]);
+  return { aiEnabled: enabled, aiReady, aiHealth: { status: h.status, text: h.status === 'ok' ? null : KIND_TEXT[h.kind] ?? 'AI ขัดข้อง' }, lineReady, quota: lineReady ? await line.quota() : null, webhookUrl: env.lineWebhookUrl };
 }
 export async function poll({ filter, q, open, after, since, rev, offset }, adminId) {
   const now = await repo.serverNow();
@@ -327,7 +329,7 @@ export async function suggest(id) {
   const m = await repo.lastInboundText(id);
   if (!m) throw conflict('NO_QUESTION', 'ยังไม่มีข้อความให้ AI ช่วยร่าง');
   const r = await answer(dec(m.content_enc).slice(0, 500), { channel: 'suggest', conversationId: id });
-  return { mode: r.mode, text: r.mode === 'answer' || r.mode === 'personal' ? r.answer : null, sources: (r.sources ?? []).slice(0, 5).map((s) => ({ title: s.title, excerpt: s.excerpt })) };
+  return { mode: r.mode, text: ['answer', 'personal', 'faq'].includes(r.mode) ? r.answer : null, sources: (r.sources ?? []).slice(0, 5).map((s) => ({ title: s.title, excerpt: s.excerpt })) };
 }
 export async function media(id, messageId, { adminId, ip }) {
   const m = await repo.findMessage(messageId, id);

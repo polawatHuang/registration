@@ -5,6 +5,9 @@ import { logger } from '../config/logger.js';
 import * as repo from '../repositories/catalogRepository.js';
 import { insertAudit } from '../repositories/auditRepository.js';
 import { createTransport, explainMailError } from '../integrations/mailer.js';
+import { classify, KIND_TEXT } from '../config/minimaxErrors.js';
+import { reportFail, reportOk, retryNow } from './aiHealthService.js';
+import { canonicalModel, modelOptions } from '../config/minimaxModels.js';
 import { decryptText, encryptText } from '../utils/crypto.js';
 import { badRequest } from '../utils/errors.js';
 
@@ -27,7 +30,7 @@ const FIELDS = {
   smtp_password: { group: 'email', label: 'รหัสผ่าน SMTP', env: 'SMTP_PASSWORD', secret: true, schema: z.string().min(1).max(200) },
   smtp_from_name: { group: 'email', label: 'ชื่อผู้ส่ง', env: 'SMTP_FROM_NAME', schema: z.string().min(1).max(100).regex(/^[^\r\n<>"]+$/, 'มีอักขระที่ใช้ไม่ได้') },
   smtp_from_email: { group: 'email', label: 'อีเมลผู้ส่ง', env: 'SMTP_FROM_EMAIL', schema: z.email('อีเมลไม่ถูกต้อง').max(200) },
-  minimax_model: { group: 'minimax', label: 'ชื่อ model', env: 'MINIMAX_MODEL', schema: z.string().regex(/^[A-Za-z0-9._-]{2,80}$/, 'ชื่อ model ไม่ถูกต้อง') },
+  minimax_model: { group: 'minimax', label: 'ชื่อ model (แนะนำ MiniMax-M3.1-Flash)', env: 'MINIMAX_MODEL', schema: z.string().regex(/^[A-Za-z0-9._-]{2,80}$/, 'ชื่อ model ไม่ถูกต้อง').transform(canonicalModel) },
 };
 const KEYS = Object.keys(FIELDS);
 const aad = (key) => `setting:${key}`;
@@ -92,6 +95,7 @@ export async function save(values, { adminId, ip }) {
     }
     await insertAudit({ adminId, action: 'integration.update', entityType: 'integration', ip, metadata: { updated: changes.filter((c) => c[1] !== null).map((c) => c[0]), cleared: changes.filter((c) => c[1] === null).map((c) => c[0]) } }, conn);
   });
+  if (changes.some(([k]) => k.startsWith('minimax_'))) await retryNow();
 }
 
 async function call(url, options) {
@@ -123,12 +127,16 @@ const TESTS = {
   async minimax(c) {
     if (!c.minimax_api_key || !c.minimax_model) return result(false, 'กรอก API key และชื่อ model ให้ครบ');
     const base = (!env.isProd && env.MINIMAX_TEST_URL) || (MINIMAX_URLS.includes(c.minimax_base_url) ? c.minimax_base_url : MINIMAX_URLS[0]);
-    const r = await call(`${base}/chat/completions`, { method: 'POST', headers: { authorization: `Bearer ${c.minimax_api_key}`, 'content-type': 'application/json' }, body: JSON.stringify({ model: c.minimax_model, messages: [{ role: 'user', content: 'ping' }], max_tokens: 16 }) });
+    const r = await call(`${base}/chat/completions`, { method: 'POST', headers: { authorization: `Bearer ${c.minimax_api_key}`, 'content-type': 'application/json' }, body: JSON.stringify({ model: canonicalModel(c.minimax_model), messages: [{ role: 'user', content: 'ping' }], ...modelOptions(canonicalModel(c.minimax_model), { maxTokens: 64, temperature: 0.1, effort: 'low' }) }) });
     // MiniMax อาจตอบ HTTP 200 พร้อมรหัสผิดพลาดใน base_resp
-    const code = r.body?.base_resp?.status_code ?? 0;
-    if (r.status !== 200) return result(false, explain(r.status));
-    if (code !== 0) return result(false, code === 1004 ? explain(401) : `MiniMax ตอบรหัส ${Number(code)}`);
-    return Array.isArray(r.body?.choices) ? result(true, `เชื่อมต่อ ${c.minimax_model} สำเร็จ`) : result(false, 'รูปแบบคำตอบไม่ตรงที่คาด');
+    if (r.status !== 200 || r.body?.base_resp?.status_code) {
+      const { kind, code } = classify(r.status, r.body);
+      await reportFail(kind, code);
+      return result(false, `${KIND_TEXT[kind]}${code ? ` (${code})` : r.status ? ` (${r.status})` : ''}${['params', 'model'].includes(kind) ? ' ตรวจชื่อ model ให้ตรง เช่น MiniMax-M3.1-Flash' : kind === 'credit' ? ' เติมเครดิตแล้วกดทดสอบอีกครั้ง' : ''}`);
+    }
+    if (!Array.isArray(r.body?.choices)) return result(false, 'รูปแบบคำตอบไม่ตรงที่คาด');
+    await reportOk();
+    return result(true, `เชื่อมต่อ ${canonicalModel(c.minimax_model)} สำเร็จ`);
   },
 };
 export async function test(target, { adminId, ip }) {

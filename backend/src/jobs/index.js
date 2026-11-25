@@ -3,6 +3,7 @@ import { query } from '../config/db.js';
 import { flushFiles, syncLedger } from '../services/retentionService.js';
 import { job } from '../services/notificationService.js';
 import { maintenance } from '../services/chatService.js';
+import { creditJob } from '../services/aiCreditService.js';
 import { autoBackup } from '../services/backupService.js';
 import { processQueue } from '../services/emailService.js';
 
@@ -12,6 +13,7 @@ const JOBS = {
   purgeFiles: async () => ({ ...(await flushFiles()), ...(await syncLedger()) }),
   chat: () => maintenance(),
   notifications: () => job(),
+  aiCredit: () => creditJob(),
   emails: () => processQueue(30),
   backup: () => autoBackup(),
   cleanup: async () => {

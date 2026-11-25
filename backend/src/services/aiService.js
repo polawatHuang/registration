@@ -3,6 +3,10 @@ import * as knowledge from '../repositories/knowledgeRepository.js';
 import { listOpenSessions, getSettings } from '../repositories/catalogRepository.js';
 import { chat, isConfigured } from '../integrations/minimaxClient.js';
 import { buildIndex, chunkText } from '../utils/knowledgeText.js';
+import { recentOffline } from '../repositories/aiRepository.js';
+import { BLOCKING } from '../config/minimaxErrors.js';
+import { mayCall } from './aiHealthService.js';
+import { normalize } from './aiReportService.js';
 import { aiSettings, overBudget, record } from './aiReportService.js';
 import { logger } from '../config/logger.js';
 
@@ -46,11 +50,27 @@ const SYSTEM = `คุณคือ Training Assistant ผู้ช่วยก�
 /** หัวใจของ AI: หน้าทดสอบของ Admin และ LINE webhook ใช้ตัวเดียวกัน ทุกครั้งบันทึกการใช้งาน */
 export async function answer(rawQuestion, { channel = 'test', conversationId = null } = {}) {
   const started = Date.now();
-  const r = await respond(rawQuestion);
+  const r = await respond(rawQuestion, conversationId);
   await record(r, { channel, conversationId, ms: Date.now() - started });
   return r;
 }
-async function respond(rawQuestion) {
+/** ตอบแทนเมื่อ AI ใช้ไม่ได้: เฉพาะถาม-ตอบที่หัวข้อตรงกับคำถาม จึงไม่มีทางเดา */
+async function directFaq(question) {
+  const q = normalize(question);
+  if (q.length < 4) return null;
+  const rows = (await knowledge.published()).filter((k) => k.source_type === 'faq');
+  const near = (t) => { const [a, b] = t.length < q.length ? [t, q] : [q, t]; return a.length >= 6 && a.length / b.length >= 0.6 && b.includes(a); };
+  const hit = rows.find((k) => normalize(k.title) === q) ?? rows.find((k) => near(normalize(k.title)));
+  return hit ? { mode: 'faq', answer: hit.content.slice(0, 1500), sources: [{ no: 1, id: hit.id, title: hit.title, category: hit.category, excerpt: hit.content.slice(0, 220), score: 1 }], question } : null;
+}
+async function unavailable(mode, fallback, question, conversationId, extra = {}) {
+  const faq = await directFaq(question);
+  if (faq) return { ...faq, ...extra };
+  // ขออภัยครั้งเดียวต่อ 30 นาทีต่อแชต ครั้งต่อไปเรียกเจ้าหน้าที่เงียบๆ
+  const repeated = conversationId && await recentOffline(conversationId);
+  return { ...fallback, ...extra, mode, answer: repeated ? null : `${fallback.answer}\n\nส่งต่อให้เจ้าหน้าที่แล้ว จะตอบในแชตนี้โดยเร็ว` };
+}
+async function respond(rawQuestion, conversationId = null) {
   const question = redact(rawQuestion).trim();
   const live = await liveChunks();
   const set = await aiSettings();
@@ -60,12 +80,14 @@ async function respond(rawQuestion) {
   const sources = hits.map((h, i) => ({ no: i + 1, id: h.sourceId, title: h.title, category: h.category, excerpt: h.text.slice(0, 220), score: Math.round(h.score * 100) / 100 }));
   if (!hits.length) return fallback;
   if (!(await isConfigured())) return { mode: 'search', answer: null, sources, question };
-  if (await overBudget()) return { ...fallback, mode: 'limit', sources };
+  if (await overBudget()) return unavailable('limit', fallback, question, conversationId, { sources });
+  if (!(await mayCall())) return unavailable('offline', fallback, question, conversationId, { sources });
   const block = hits.map((h, i) => `[${i + 1}] ${h.title}\n${h.text}`.replace(/<\/?sources>/gi, '')).join('\n\n');
   let reply;
-  try { reply = await chat([{ role: 'system', content: SYSTEM }, { role: 'user', content: `<sources>\n${block}\n</sources>\n\nคำถาม: ${question.replace(/<\/?sources>/gi, '')}` }], { maxTokens: set.maxTokens, temperature: set.temperature }); } catch (err) {
+  try { reply = await chat([{ role: 'system', content: SYSTEM }, { role: 'user', content: `<sources>\n${block}\n</sources>\n\nคำถาม: ${question.replace(/<\/?sources>/gi, '')}` }], { maxTokens: set.maxTokens, temperature: set.temperature, effort: set.effort }); } catch (err) {
     logger.warn({ code: err.code }, 'ai answer failed');
-    return { ...fallback, mode: 'error', error: err.message, sources };
+    if (BLOCKING.includes(err.kind)) return unavailable('offline', fallback, question, conversationId, { error: err.message, sources });
+    return { ...fallback, mode: 'error', error: err.message, sources, ...err.usage };
   }
   const usage = { model: reply.model, tokens: reply.tokens, tokensIn: reply.tokensIn, tokensOut: reply.tokensOut };
   const cited = [...new Set([...reply.text.matchAll(/\[(\d{1,2})\]/g)].map((m) => Number(m[1])))];

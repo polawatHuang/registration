@@ -97,8 +97,8 @@ describe('สำรองและกู้คืน', () => {
     const keep = setInterval(() => {}, 50); // timer ของตัวตั้งเวลาไม่ค้ำโปรเซส
     const stop = startScheduler({ every: 60_000, first: 10 });
     let n = 0;
-    for (let i = 0; i < 60 && n < 6; i += 1) { await new Promise((x) => setTimeout(x, 50)); [{ n }] = await s.query('SELECT COUNT(*) n FROM job_locks WHERE last_finished_at IS NOT NULL'); }
+    for (let i = 0; i < 60 && n < 7; i += 1) { await new Promise((x) => setTimeout(x, 50)); [{ n }] = await s.query('SELECT COUNT(*) n FROM job_locks WHERE last_finished_at IS NOT NULL'); }
     stop(); clearInterval(keep);
-    assert.equal(n, 6);
+    assert.equal(n, 7);
   });
 });

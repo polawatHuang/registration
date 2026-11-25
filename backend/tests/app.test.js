@@ -1114,7 +1114,7 @@ describe('แจ้งเตือน LINE', () => {
 
   test('ส่งซ้ำเอง: ขัดข้องชั่วคราวได้ข้อความเดียว, LINE รับแล้วแต่ตอบผิด, โควตาหมดไม่เสียรอบ, token ผิด, ล้มเหลวถาวรแล้วกดส่งใหม่', async () => {
     const { forgetQuota } = await import('../src/integrations/lineMessagingClient.js');
-    const again = async (id) => { await s.query('UPDATE notification_queue SET next_attempt_at = UTC_TIMESTAMP() WHERE application_id = :id', { id }); await run(); return (await queue(id))[0]; };
+    const again = async (id) => { await s.query('UPDATE notification_queue SET next_attempt_at = UTC_TIMESTAMP() WHERE application_id = :id', { id }); await run(); return until(async () => { const r = (await queue(id))[0]; return !['pending', 'processing'].includes(r.status) && r; }); }; // ตัวส่งเบื้องหลังอาจหยิบงานไปก่อน
     s.line.chat.status.push = ['lost'];
     const lost = await applyLine(); await until(async () => (await queue(lost.id))[0]?.retry_count === 1);
     assert.equal((await again(lost.id)).status, 'sent');

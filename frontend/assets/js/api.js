@@ -1,8 +1,9 @@
 import { API_BASE } from './config.js';
 
 export class ApiError extends Error {
-  constructor(status, body) {
-    super(body?.message || 'เชื่อมต่อระบบไม่สำเร็จ กรุณาลองใหม่');
+  constructor(status, body, path = '') {
+    // คำตอบที่ไม่ใช่ของแอป (502/504 ระหว่างรีสตาร์ต หรือ firewall ของ hosting) บอกรหัสเพื่อหาสาเหตุได้
+    super(body?.message || (status ? `ระบบตอบผิดรูปแบบ (HTTP ${status}${path ? ` ${path.split('?')[0]}` : ''}) กรุณาลองใหม่` : 'เชื่อมต่อระบบไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองใหม่'));
     this.status = status;
     this.code = body?.meta?.code;
     this.errors = body?.meta?.errors ?? [];
@@ -15,15 +16,18 @@ export async function api(path, { method = 'GET', body, signal } = {}) {
   const headers = {};
   if (csrf) headers['X-CSRF-Token'] = csrf;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const run = () => fetch(API_BASE + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: 'same-origin', signal });
   let res;
   try {
-    res = await fetch(API_BASE + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: 'same-origin', signal });
+    res = await run();
+    // แอปกำลังรีสตาร์ต: อ่านข้อมูลซ้ำได้อย่างปลอดภัย คำสั่งที่เปลี่ยนข้อมูลไม่ลองเอง
+    if (method === 'GET' && [502, 503, 504].includes(res.status) && !(res.headers.get('content-type') ?? '').includes('json')) { await new Promise((r) => { setTimeout(r, 2500); }); res = await run(); }
   } catch (err) {
     if (err.name === 'AbortError') throw err;
-    throw new ApiError(0, null);
+    throw new ApiError(0, null, path);
   }
   const json = await res.json().catch(() => null);
-  if (!res.ok || !json) throw new ApiError(res.status, json);
+  if (!res.ok || !json) throw new ApiError(res.status, json, path);
   if (json.data?.csrfToken) csrf = json.data.csrfToken;
   return json;
 }

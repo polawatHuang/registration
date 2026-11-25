@@ -76,6 +76,8 @@ async function startLineMock() {
     if (req.method === 'DELETE' && req.url.startsWith('/v2/bot/richmenu/')) { mock.rich.menus.delete(req.url.split('/').pop()); return json(200, {}); }
     const good = /^Bearer good-/.test(req.headers.authorization ?? '');
     if (req.url === '/v2/bot/info') return good ? json(200, { displayName: 'OA' }) : json(401, {});
+    if (req.url === '/chat/completions' && mock.aiFail) { mock.aiRequests.push(body); return json(mock.aiFail.status, mock.aiFail.body); }
+    if (req.url === '/chat/completions' && mock.aiReject?.(JSON.parse(body))) { mock.aiRequests.push(body); return json(400, { error: { message: 'invalid params' } }); }
     if (req.url === '/chat/completions' && mock.aiReply) { mock.aiRequests.push(body); if (mock.aiDelay) await mock.aiDelay(); return json(200, { choices: [{ finish_reason: mock.aiFinish ?? 'stop', message: { content: mock.aiReply } }], ...(mock.aiUsage ? { usage: mock.aiUsage } : {}), base_resp: { status_code: 0 } }); }
     if (req.url === '/chat/completions') return good ? json(200, { choices: [{}], base_resp: { status_code: 0 } }) : json(200, { base_resp: { status_code: 1004 } });
     const t = tokens.get(f.get('id_token'));

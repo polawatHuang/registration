@@ -1,4 +1,6 @@
 import * as knowledge from '../services/knowledgeService.js';
+import * as credits from '../services/aiCreditService.js';
+import { kick as notify } from '../services/notificationService.js';
 import * as reports from '../services/aiReportService.js';
 import { answer } from '../services/aiService.js';
 import { isConfigured } from '../integrations/minimaxClient.js';
@@ -18,6 +20,10 @@ export async function upload(req, res) {
 }
 export async function update(req, res) { await knowledge.update(idOf(req), parse(s.knowledgeSchema, req.body), actor(req)); ok(res); }
 export async function remove(req, res) { await knowledge.remove(idOf(req), actor(req)); ok(res); }
+export const credit = async (_req, res) => ok(res, await credits.credit());
+export const addCredit = async (req, res) => ok(res, await credits.addEntry(parse(s.creditEntrySchema, req.body), actor(req)), { message: 'บันทึกแล้ว' });
+export const creditOptions = async (req, res) => ok(res, await credits.saveOptions(parse(s.creditOptionsSchema, req.body), actor(req)), { message: 'บันทึกแล้ว' });
+export async function checkCredit(req, res) { const r = await credits.check(actor(req)); notify(); ok(res, { result: r, ...(await credits.credit()) }); }
 export const report = async (_req, res) => ok(res, await reports.report());
 export const history = async (_req, res) => ok(res, await reports.history());
 export async function resolve(req, res) { await reports.resolve(parse(s.aiResolveSchema, req.body).ids, actor(req)); ok(res); }

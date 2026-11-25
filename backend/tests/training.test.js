@@ -407,6 +407,54 @@ describe('AI: บันทึกการใช้งาน เพดาน ร�
     assert.ok(dash.ai.tokens >= 1500 && Number.isInteger(dash.certificates) && Number.isInteger(dash.attendance.total), JSON.stringify(dash.ai));
     assert.equal((await (await s.adminClient('training_staff')).get(`${A}/dashboard`)).body.data.ai, null);
   });
+  test('เรียก MiniMax ตามรุ่น ลองใหม่ครั้งเดียวเมื่อพารามิเตอร์ไม่รับ และบันทึก token ของคำตอบที่ใช้ไม่ได้', async () => {
+    const root = await s.adminClient(); const admin = await s.adminClient('admin');
+    const model = (m) => root.put(`${A}/integrations`, { password: root.admin.password, values: { minimax_model: m } });
+    const set = (o) => admin.put('/api/v1/ai/settings', { maxTokens: 3000, temperature: 0.3, fallback: '', perHour: 20, monthlyTokens: '', priceIn: '', priceOut: '', currency: 'USD', ...o });
+    const last = () => JSON.parse(s.line.aiRequests.at(-1));
+    s.line.aiReply = 'คันละ 40 บาท [1]'; s.line.aiUsage = { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 };
+    await set({});
+    assert.equal((await model('minimax-m3.1-flash')).status, 200);
+    assert.equal((await s.query("SELECT setting_value v FROM system_settings WHERE setting_key = 'minimax_model'"))[0].v, 'MiniMax-M3.1-Flash', 'แก้ตัวพิมพ์ให้ตรง');
+    // ค่าที่เคยบันทึกแบบขาดคำนำหน้าต้องใช้ได้โดยไม่ต้องแก้
+    await s.query("UPDATE system_settings SET setting_value = 'M3.1-Flash' WHERE setting_key = 'minimax_model'");
+    assert.equal((await ask(admin, 'ค่าจอดรถเท่าไหร่')).mode, 'answer');
+    assert.equal(last().model, 'MiniMax-M3.1-Flash');
+    let q = last();
+    assert.deepEqual([q.reasoning_effort, q.reasoning_split, q.max_completion_tokens, q.max_tokens, q.temperature, q.thinking], ['low', true, 3000, undefined, undefined, undefined]);
+    await set({ effort: 'high' });
+    await ask(admin, 'ค่าจอดรถเท่าไหร่');
+    assert.equal(last().reasoning_effort, 'high');
+    assert.equal((await set({ effort: 'max' })).status, 400);
+    const report = (await admin.get('/api/v1/ai/report')).body.data;
+    assert.deepEqual(report.model, { name: 'MiniMax-M3.1-Flash', ignoresTemperature: true, usesEffort: true });
+    await model('MiniMax-M3');
+    await ask(admin, 'ค่าจอดรถเท่าไหร่');
+    q = last();
+    assert.deepEqual([q.thinking, q.reasoning_effort, q.reasoning_split, q.max_completion_tokens], [{ type: 'disabled' }, undefined, undefined, 3000]);
+    // MiniMax ไม่รับพารามิเตอร์เฉพาะรุ่น
+    s.line.aiRequests.length = 0; s.line.aiReject = (b) => 'thinking' in b;
+    assert.equal((await ask(admin, 'ค่าจอดรถเท่าไหร่')).mode, 'answer');
+    assert.equal(s.line.aiRequests.length, 2);
+    assert.deepEqual(Object.keys(last()).sort(), ['max_tokens', 'messages', 'model']);
+    s.line.aiRequests.length = 0; s.line.aiReject = () => true;
+    assert.equal((await ask(admin, 'ค่าจอดรถเท่าไหร่')).mode, 'error');
+    assert.equal(s.line.aiRequests.length, 2, 'ไม่วนซ้ำ');
+    const ping = await root.post(`${A}/integrations/test/minimax`);
+    assert.match(ping.body.data.message, /ชื่อ model/);
+    s.line.aiReject = null;
+    // คิดจน token หมด: ไม่ส่งคำตอบครึ่งเดียว แต่ยังนับค่าใช้จ่าย
+    s.line.aiFinish = 'length'; s.line.aiUsage = { prompt_tokens: 100, completion_tokens: 3000, total_tokens: 3100 };
+    const cut = await ask(admin, 'ค่าจอดรถเท่าไหร่');
+    assert.equal(cut.mode, 'error');
+    assert.match(cut.error, /Max tokens/);
+    const [row] = await s.query('SELECT mode, tokens_total, tokens_out FROM ai_interactions ORDER BY id DESC LIMIT 1');
+    assert.deepEqual([row.mode, row.tokens_total, row.tokens_out], ['error', 3100, 3000]);
+    s.line.aiFinish = null;
+    for (const bad of ['', '   ', '<think>คิดไม่จบ คันละ 40 บาท [1]']) { s.line.aiReply = bad || ' '; assert.equal((await ask(admin, 'ค่าจอดรถเท่าไหร่')).mode, 'error', bad); }
+    s.line.aiReply = null; s.line.aiUsage = null;
+    await model('mock-model');
+  });
   test('คำถามที่มีข้อมูลส่วนบุคคลถูกตัดก่อนบันทึก และลบตามระยะเวลาเก็บแชต', async () => {
     const admin = await s.adminClient('admin');
     await ask(admin, 'เบอร์ผม 081-234-5678 อีเมล a@b.com ค่าจอดรถ');
@@ -505,6 +553,153 @@ describe('แจ้งเตือนเช็กอิน', () => {
     assert.equal(Number(a.n), 4, 'นับทุกเช็กอิน ไม่นับสแกนซ้ำและเช็กเอาต์');
     assert.ok(a.c <= 2, 'รวมเป็นข้อความเดียวต่อช่วงเวลา');
     await set({ checkin: false, emailFallback: false });
+  });
+});
+
+describe('เครดิต AI', () => {
+  const ask = async (admin, question) => (await admin.post('/api/v1/ai/chat', { question })).body.data;
+  const until = async (fn) => { for (let i = 0; i < 100; i += 1) { const v = await fn(); if (v) return v; await new Promise((r) => setTimeout(r, 50)); } throw new Error('timeout'); };
+  const jobs = () => new Client(s.base).post('/api/v1/internal/jobs/run', {}, { headers: { 'x-jobs-secret': process.env.JOBS_SECRET } });
+  const health = async () => JSON.parse((await s.query("SELECT setting_value v FROM system_settings WHERE setting_key = 'ai_health_json'"))[0].v);
+  const patchHealth = async (o) => s.query("UPDATE system_settings SET setting_value = :v WHERE setting_key = 'ai_health_json'", { v: JSON.stringify({ ...(await health()), ...o }) });
+  const events = async (t) => (await s.query('SELECT COUNT(*) n FROM domain_events WHERE event_type = :t', { t }))[0].n;
+  let admin; let root;
+  const Q = 'ค่าจอดรถคันละกี่บาทต่อวัน';
+  before(async () => {
+    admin = await s.adminClient('admin'); root = await s.adminClient();
+    await root.put(`${A}/integrations`, { password: root.admin.password, values: { minimax_api_key: 'good-minimax-key-000', minimax_model: 'MiniMax-M3.1-Flash' } });
+    await admin.post('/api/v1/ai/knowledge', { title: 'ที่จอดรถบรรทุกอยู่ตรงไหน', content: 'อยู่ด้านหลังอาคาร B', category: 'FAQ', status: 'published' });
+    await admin.post('/api/v1/ai/knowledge', { title: 'ค่าจอดรถ', content: 'ค่าจอดรถคันละ 40 บาท', category: 'FAQ', status: 'published', keywords: 'จอดรถ' });
+    await admin.put('/api/v1/ai/settings', { maxTokens: 3000, temperature: 0.3, fallback: '', perHour: 50, monthlyTokens: '', priceIn: '', priceOut: '', currency: 'USD' });
+    await admin.put('/api/v1/ai/credit/options', { lowPct: 20, email: 'ops@example.com' });
+  });
+  after(() => { s.line.aiReply = null; s.line.aiUsage = null; s.line.aiReject = null; s.line.aiFail = null; });
+  /** นับเฉพาะที่ถึงกล่องจดหมายจริง (sent) */
+  const mails = async (key) => (await s.query("SELECT COUNT(*) n FROM email_queue WHERE template = 'ai_alert' AND status = 'sent' AND idempotency_key LIKE :k", { k: `${key}%` }))[0].n;
+
+  test('จำแนกรหัส MiniMax ทุกแบบ', async () => {
+    const { classify } = await import('../src/config/minimaxErrors.js');
+    const cases = [[200, { base_resp: { status_code: 1008 } }, 'credit'], [402, null, 'credit'], [400, { error: { message: 'insufficient balance (1008)' } }, 'credit'], [429, { error: { message: 'Insufficient balance' } }, 'credit'], [200, { base_resp: { status_code: 2056 } }, 'quota'], [401, null, 'auth'], [200, { base_resp: { status_code: 2049 } }, 'auth'], [400, { error: { message: 'model is not exist (2022)' } }, 'model'], [429, null, 'rate'], [400, { error: { message: 'bad (2013)' } }, 'params'], [200, { base_resp: { status_code: 1027 } }, 'content'], [500, null, 'server'], [0, null, 'network']];
+    for (const [st, body, kind] of cases) assert.equal(classify(st, body).kind, kind, JSON.stringify([st, body]));
+  });
+
+  test('เครดิตหมด: หยุดเรียกทันที ตอบถาม-ตอบที่ตรง ไม่เดา แจ้งครั้งเดียว แล้วฟื้นเองหลังเติม', async () => {
+    s.line.aiReply = 'คันละ 40 บาท [1]'; s.line.aiUsage = { prompt_tokens: 1000, completion_tokens: 100, total_tokens: 1100 };
+    assert.equal((await ask(admin, Q)).mode, 'answer');
+    const before = await events('ai.unavailable');
+    s.line.aiFail = { status: 200, body: { base_resp: { status_code: 1008, status_msg: 'insufficient balance' } } };
+    const all = await Promise.all(Array.from({ length: 6 }, () => ask(admin, Q)));
+    assert.ok(all.every((r) => r.mode === 'offline'), JSON.stringify(all.map((r) => r.mode)));
+    assert.equal((await health()).kind, 'credit');
+    assert.equal(await events('ai.unavailable') - before, 1, 'ล้มพร้อมกันแจ้งครั้งเดียว');
+    await until(async () => await mails('ai:down:credit') === 1);
+    assert.ok(s.smtp.mails.some((m) => m.to === 'ops@example.com'));
+    const calls = s.line.aiRequests.length;
+    const direct = await ask(admin, 'ที่จอดรถบรรทุก อยู่ตรงไหนครับ?');
+    assert.deepEqual([direct.mode, direct.answer], ['faq', 'อยู่ด้านหลังอาคาร B']);
+    const other = await ask(admin, Q);
+    assert.equal(other.mode, 'offline');
+    assert.match(other.answer, /ส่งต่อให้เจ้าหน้าที่/);
+    assert.ok(!other.answer.includes('40 บาท'), 'ไม่เดาจากรายการที่แค่ใกล้เคียง');
+    assert.equal(s.line.aiRequests.length, calls, 'ไม่เรียก MiniMax ระหว่างหยุด');
+    let c = (await admin.get('/api/v1/ai/credit')).body.data;
+    assert.deepEqual([c.level, c.health.status, c.kindText], ['empty', 'blocked', 'เครดิต MiniMax หมด']);
+    assert.match((await admin.get(`${A}/chat/state`)).body.data.aiHealth.text, /เครดิต/);
+    // งานตั้งเวลาลองเองเมื่อถึงเวลา และไม่ถี่กว่านั้น
+    await s.query("INSERT INTO system_settings (setting_key, setting_value) VALUES ('ai_chat_enabled', '1') ON DUPLICATE KEY UPDATE setting_value = '1'");
+    await jobs();
+    assert.equal(s.line.aiRequests.length, calls);
+    await patchHealth({ nextProbeAt: new Date(Date.now() - 1000).toISOString() });
+    await jobs();
+    assert.equal(s.line.aiRequests.length, calls + 1);
+    assert.equal((await health()).status, 'blocked');
+    s.line.aiFail = null;
+    await patchHealth({ nextProbeAt: new Date(Date.now() - 1000).toISOString() });
+    await jobs();
+    assert.equal((await health()).status, 'ok');
+    await until(async () => await mails('ai:up') === 1);
+    assert.equal(await mails('ai:down:credit'), 1);
+    assert.equal((await ask(admin, Q)).mode, 'answer');
+    c = (await admin.get('/api/v1/ai/credit')).body.data;
+    assert.notEqual(c.level, 'empty');
+  });
+
+  test('ในแชต LINE: ขออภัยครั้งเดียวต่อ 30 นาที แล้วเรียกเจ้าหน้าที่ต่อโดยไม่ส่งซ้ำ', async () => {
+    const crypto = await import('node:crypto');
+    const say = (text) => { const raw = JSON.stringify({ events: [{ type: 'message', mode: 'active', timestamp: Date.now(), webhookEventId: crypto.randomUUID(), source: { type: 'user', userId: 'Ucredit' }, replyToken: crypto.randomUUID(), message: { id: crypto.randomUUID(), type: 'text', text } }] }); return fetch(`${s.base}/api/v1/line/webhook`, { method: 'POST', body: raw, headers: { 'content-type': 'application/json', 'x-line-signature': crypto.createHmac('sha256', process.env.LINE_CHANNEL_SECRET).update(raw).digest('base64') } }); };
+    s.line.aiFail = { status: 402, body: {} };
+    const sent = () => s.line.chat.sent.filter((m) => JSON.stringify(m).includes('ส่งต่อให้เจ้าหน้าที่แล้ว จะตอบ')).length;
+    const n0 = sent();
+    const done = async (k) => until(async () => (await s.query("SELECT COUNT(*) n FROM ai_interactions WHERE channel = 'line' AND mode = 'offline'"))[0].n >= k);
+    await say(Q); await done(1);
+    await until(() => sent() === n0 + 1);
+    await say(`${Q} ตอบหน่อย`); await done(2);
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(sent(), n0 + 1);
+    const [conv] = await s.query("SELECT attention_reason r FROM chat_conversations c JOIN line_users l ON l.id = c.line_user_id WHERE l.line_user_id = 'Ucredit'");
+    assert.equal(conv.r, 'AI หยุดชั่วคราว');
+    s.line.aiFail = null;
+    assert.equal((await admin.post('/api/v1/ai/credit/check')).body.data.result.ok, true, 'กดตรวจอีกครั้งแล้วกลับมาทันที');
+    assert.equal((await health()).status, 'ok');
+    await s.query("UPDATE system_settings SET setting_value = '' WHERE setting_key = 'ai_chat_enabled'");
+  });
+
+  test('ขัดข้องชั่วคราวไม่หยุดทันที ครบ 5 ครั้งจึงพัก และคำถามต้องห้ามไม่นับเป็นบริการล่ม', async () => {
+    s.line.aiFail = { status: 200, body: { base_resp: { status_code: 1027 } } };
+    for (let i = 0; i < 7; i += 1) assert.equal((await ask(admin, Q)).mode, 'error');
+    assert.equal((await health()).status, 'ok');
+    s.line.aiFail = { status: 500, body: {} };
+    for (let i = 0; i < 4; i += 1) assert.equal((await ask(admin, Q)).mode, 'error');
+    assert.equal((await health()).status, 'ok');
+    await ask(admin, Q);
+    assert.deepEqual([(await health()).status, (await health()).kind], ['degraded', 'server']);
+    assert.equal((await ask(admin, Q)).mode, 'offline');
+    s.line.aiFail = null;
+    await patchHealth({ nextProbeAt: new Date(Date.now() - 1).toISOString() });
+    assert.equal((await ask(admin, Q)).mode, 'answer');
+    assert.equal((await health()).status, 'ok');
+    // คีย์เสีย → ใส่คีย์ใหม่แล้วลองทันที
+    s.line.aiFail = { status: 401, body: {} };
+    await ask(admin, Q);
+    assert.equal((await health()).kind, 'auth');
+    s.line.aiFail = null;
+    await root.put(`${A}/integrations`, { password: root.admin.password, values: { minimax_api_key: 'good-minimax-key-111' } });
+    assert.equal((await ask(admin, Q)).mode, 'answer');
+  });
+
+  test('ยอดคงเหลือ พยากรณ์ ระดับเตือน และราคาที่เปลี่ยนไม่กระทบยอดเก่า', async () => {
+    const get = async () => (await admin.get('/api/v1/ai/credit')).body.data;
+    assert.equal((await admin.post('/api/v1/ai/credit', { kind: 'balance', amount: -1 })).status, 400);
+    assert.equal((await admin.post('/api/v1/ai/credit', { kind: 'topup', amount: 0 })).status, 400);
+    assert.equal((await (await s.adminClient('training_staff')).get('/api/v1/ai/credit')).status, 403);
+    await s.query('DELETE FROM ai_interactions'); // เริ่มวัดใหม่
+    await new Promise((r) => setTimeout(r, 1100));
+    await admin.post('/api/v1/ai/credit', { kind: 'balance', amount: 1 });
+    let c = await get();
+    assert.deepEqual([c.remaining, c.level, c.price.source, c.price.in, c.price.out], [1, 'ok', 'reference', 0.15, 0.6]);
+    s.line.aiReply = 'คันละ 40 บาท [1]'; s.line.aiUsage = { prompt_tokens: 1_000_000, completion_tokens: 1_000_000, total_tokens: 2_000_000 };
+    await ask(admin, Q); // 0.15 + 0.60
+    c = await get();
+    assert.ok(Math.abs(c.remaining - 0.25) < 1e-6, String(c.remaining));
+    assert.ok(Math.abs(c.perDay - 0.75) < 1e-6);
+    assert.equal(c.level, 'critical', 'ใช้ได้ไม่ถึง 2 วัน');
+    await admin.put('/api/v1/ai/settings', { maxTokens: 3000, temperature: 0.3, fallback: '', perHour: 50, monthlyTokens: '', priceIn: 100, priceOut: 100, currency: 'USD' });
+    assert.ok(Math.abs((await get()).remaining - 0.25) < 1e-6, 'ยอดเก่าไม่คิดราคาใหม่');
+    await admin.put('/api/v1/ai/settings', { maxTokens: 3000, temperature: 0.3, fallback: '', perHour: 50, monthlyTokens: '', priceIn: '', priceOut: '', currency: 'USD' });
+    const low = await events('ai.credit_low'); const critical = await mails('ai:level:critical');
+    await s.query("UPDATE system_settings SET setting_value = 'ok' WHERE setting_key = 'ai_credit_level'");
+    await Promise.all([jobs(), jobs(), jobs()]);
+    assert.equal(await events('ai.credit_low') - low, 1);
+    await until(async () => await mails('ai:level:critical') === critical + 1);
+    await jobs();
+    assert.equal(await mails('ai:level:critical'), critical + 1, 'ระดับเดิมไม่เตือนซ้ำ');
+    c = (await admin.post('/api/v1/ai/credit', { kind: 'topup', amount: 99.75 })).body.data;
+    assert.ok(Math.abs(c.remaining - 100) < 1e-6);
+    assert.equal(c.level, 'ok');
+    await admin.post('/api/v1/ai/credit', { kind: 'balance', amount: 50 });
+    c = await get();
+    assert.ok(c.remaining <= 50 && c.entries[0].kind === 'balance');
+    assert.equal(c.total, 50, 'ตั้งยอดจริงแล้วเริ่มนับใหม่');
   });
 });
 

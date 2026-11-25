@@ -66,7 +66,7 @@ export async function initAdmin(page) {
       h('div', { class: 'who' }, me.displayName, h('small', {}, me.role))),
     h('header', { class: 'top' }, h('h1', {}, item[2]), h('button', { class: 'kbtn', type: 'button', id: 'kbtn', 'aria-label': 'ค้นหาด่วน' }, icon('search'), h('span', {}, 'ค้นหา'), h('kbd', {}, navigator.platform.startsWith('Mac') ? '⌘K' : 'Ctrl K')),
       h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'ออกจากระบบ', title: 'ออกจากระบบ', onclick: logout }, icon('box-arrow-right'))), main);
-  $('.side [aria-current]')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  $('.side [aria-current]')?.scrollIntoView({ inline: 'center', block: 'center' });
   $('#kbtn').addEventListener('click', palette());
   if (!can(item[3])) { main.append(empty('lock-fill', 'คุณไม่มีสิทธิ์เข้าหน้านี้')); return new Promise(() => {}); }
   return main;
