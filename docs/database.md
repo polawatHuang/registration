@@ -9,7 +9,7 @@ Migration อยู่ที่ `backend/database/migrations` รันด้ว
 | สมัคร | applicants, applications, application_documents, application_status_history, consents |
 | LINE | line_users, line_account_links, line_login_states, applicant_sessions |
 | เจ้าหน้าที่ | admin_users, roles, permissions, role_permissions, admin_sessions, admin_audit_logs, auth_attempts |
-| ระบบ | domain_events, legal_versions, chat_conversations, chat_messages, line_webhook_events, data_requests, purge_log, purge_files, email_queue, ai_knowledge, system_settings, job_locks, schema_migrations |
+| ระบบ | domain_events, legal_versions, notification_queue, notification_logs, notification_templates, notification_campaigns, admin_notification_prefs, admin_line_codes, chat_conversations, chat_messages, line_webhook_events, data_requests, purge_log, purge_files, email_queue, ai_knowledge, system_settings, job_locks, schema_migrations |
 
 ข้อบังคับหลัก: `uq_applications_person_session` (1 คน 1 รุ่น เว้นใบที่ยกเลิก/ไม่ผ่าน), `uq_applications_idem` (กันส่งซ้ำ), `uq_link_line`/`uq_link_applicant` (1 LINE ↔ 1 คน), ที่นั่งนับหลังล็อกแถวรุ่น
 

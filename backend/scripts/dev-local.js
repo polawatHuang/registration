@@ -20,7 +20,7 @@ async function customer(userId, message, extra = {}) {
   const raw = JSON.stringify({ destination: 'dev', events: [{ type: 'message', mode: 'active', timestamp: Date.now(), webhookEventId: crypto.randomUUID(), source: { type: 'user', userId }, replyToken: `${userId}.${crypto.randomUUID()}`, message: { id: String(Date.now()) + crypto.randomInt(1000), ...message }, ...extra }] });
   return fetch(`http://localhost:${port}/api/v1/line/webhook`, { method: 'POST', body: raw, headers: { 'content-type': 'application/json', 'x-line-signature': crypto.createHmac('sha256', channelSecret).update(raw).digest('base64') } });
 }
-const PEOPLE = { Udemo1: 'คุณข้าวหอม', Udemo2: 'คุณใบเตย', Udemo3: 'คุณตะวัน' };
+const PEOPLE = { Udemo1: 'คุณข้าวหอม', Udemo2: 'คุณใบเตย', Udemo3: 'คุณตะวัน', 'Udev-local': 'ต้นข้าว (ผู้ที่ล็อกอินเว็บด้วย LINE จำลอง)' };
 const escape = (v) => String(v).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 const line = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');

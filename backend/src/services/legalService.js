@@ -5,7 +5,7 @@ import { sha256 } from '../utils/crypto.js';
 import { badRequest } from '../utils/errors.js';
 
 /** เพิ่มเลขนี้ทุกครั้งที่แก้ข้อความใน privacy.html หรือ policy.html เพื่อให้ผู้สมัครต้องอ่านใหม่ */
-const TEMPLATE = 'T3';
+const TEMPLATE = 'T4';
 export const LEGAL_FIELDS = {
   controller_name: { required: true }, controller_address: { required: true }, controller_contact: { required: true }, dpo_contact: {},
   basis_main: { required: true }, recipients: { required: true },

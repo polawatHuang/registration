@@ -989,6 +989,254 @@ describe('รวมแชต LINE OA', () => {
   });
 });
 
+describe('แจ้งเตือน LINE', () => {
+  const N = `${A}/notifications`;
+  let admin;
+  const svc = () => import('../src/services/notificationService.js');
+  const until = async (fn) => { for (let i = 0; i < 100; i += 1) { const v = await fn(); if (v) return v; await new Promise((r) => setTimeout(r, 30)); } throw new Error('timeout'); };
+  const uid = () => `U${crypto.randomUUID().replaceAll('-', '')}`;
+  const pushed = (u) => s.line.chat.sent.filter((x) => x.kind === 'push' && x.to === u);
+  const queue = (id, type) => s.query('SELECT * FROM notification_queue WHERE application_id = :id AND (:type IS NULL OR notification_type = :type) ORDER BY id', { id, type: type ?? null });
+  const run = async () => { await (await svc()).processEvents(); await (await svc()).processQueue(); };
+  const toggle = (enabled, over = {}) => admin.put(`${N}/settings`, { enabled, daysBefore: 3, hoursBefore: 2, evaluationUrl: '', ...over });
+  const applyLine = async (over = {}) => { const u = uid(); const c = new Client(s.base); await s.lineLogin(c, u); const r = await s.apply({ sessionId: await s.newSession(), ...over }, c); assert.equal(r.status, 201, JSON.stringify(r.body)); return { u, c, id: r.body.data.id, ...r }; };
+  const linkAdmin = async (a = admin) => {
+    const u = uid();
+    const { code: c } = (await a.post(`${N}/link-code`)).body.data;
+    await hook(u, c);
+    return u;
+  };
+  const hook = async (u, text) => {
+    const raw = JSON.stringify({ events: [{ type: 'message', mode: 'active', timestamp: Date.now(), webhookEventId: crypto.randomUUID(), source: { type: 'user', userId: u }, replyToken: crypto.randomUUID(), message: { id: String(crypto.randomInt(1e12)), type: 'text', text } }] });
+    await fetch(`${s.base}/api/v1/line/webhook`, { method: 'POST', body: raw, headers: { 'x-line-signature': crypto.createHmac('sha256', process.env.LINE_CHANNEL_SECRET).update(raw).digest('base64') } });
+    await until(async () => !(await s.query("SELECT 1 FROM line_webhook_events WHERE status IN ('pending','processing') LIMIT 1")).length);
+  };
+  const prefs = (a, events) => admin.put(`${N}/recipients/${a.admin.id}`, { events });
+  const closeWindows = () => s.query("UPDATE notification_queue SET next_attempt_at = UTC_TIMESTAMP() WHERE admin_id IS NOT NULL AND status = 'pending'");
+  before(async () => { admin = await s.adminClient(); await s.query('UPDATE domain_events SET processed_at = UTC_TIMESTAMP() WHERE processed_at IS NULL'); });
+
+  test('ปิดอยู่: ไม่ส่งและไม่สะสมไว้ส่งย้อนหลังตอนเปิด; เปิดแล้วส่งทันทีหลังสมัคร', async () => {
+    const off = await applyLine();
+    await run();
+    assert.equal((await toggle(true)).status, 200);
+    await run();
+    assert.equal(pushed(off.u).length, 0);
+    const on = await applyLine();
+    await until(() => pushed(on.u).length === 1);
+    const flat = JSON.stringify(pushed(on.u)[0]);
+    for (const need of [on.fields.fullName, on.body.data.applicationNo, 'รุ่นทดสอบ', 'มหาวิทยาลัยทดสอบ']) assert.ok(flat.includes(need), need);
+    for (const bad of [on.fields.nationalId, on.fields.mobile, on.fields.email]) assert.ok(!flat.includes(bad));
+    const q = await until(async () => { const r = (await queue(on.id))[0]; return r.status === 'sent' && r; });
+    assert.equal((await admin.get(`${N}/queue/${q.id}/logs`)).body.data[0].error_code, '200');
+    assert.ok(!JSON.stringify(await s.query('SELECT * FROM notification_queue')).includes(on.fields.fullName));
+  });
+
+  test('ครบเส้นทาง: เอกสารไม่ครบพร้อมเหตุผล → ส่งใหม่ → ผ่าน → อนุมัติ แต่ละขั้นได้ครั้งเดียว', async () => {
+    const a = await applyLine();
+    const d = (await admin.get(`${A}/applications/${a.id}`)).body.data.documents;
+    await admin.post(`${A}/applications/${a.id}/documents/${d[0].id}/review`, { decision: 'rejected', reason: 'ภาพเบลอมาก' });
+    await move(admin, a.id, 'under_review', 'documents_incomplete');
+    await until(() => pushed(a.u).some((x) => JSON.stringify(x).includes('ภาพเบลอมาก')));
+    const fd = new FormData(); fd.append('id_card', new Blob([PNG]), 'n.png');
+    await a.c.request('POST', `/api/v1/applications/me/${a.id}/documents`, { form: fd });
+    await until(async () => (await queue(a.id, 'documents_received'))[0]?.status === 'sent');
+    await approveAllDocs(admin, a.id);
+    await move(admin, a.id, 'under_review', 'documents_approved');
+    await until(async () => (await queue(a.id, 'documents_approved'))[0]?.status === 'sent');
+    await move(admin, a.id, 'documents_approved', 'approved');
+    await until(async () => (await queue(a.id, 'approved'))[0]?.status === 'sent');
+    await Promise.all([run(), run(), run()]);
+    const all = await queue(a.id);
+    assert.deepEqual(all.map((x) => x.notification_type).sort(), ['approved', 'documents_approved', 'documents_incomplete', 'documents_received', 'submitted']);
+    assert.equal(pushed(a.u).length, 5);
+  });
+
+  test('ไม่ส่งผิดคน/ล้าสมัย: ไม่เชื่อม LINE, ยกเลิกเชื่อมหลังเข้าคิว, สถานะเปลี่ยนก่อนส่ง, บล็อก, ยังไม่เพิ่มเพื่อน, ปิด template', async () => {
+    const none = await s.apply({ sessionId: await s.newSession() });
+    await run();
+    assert.equal((await queue(none.body.data.id)).length, 0);
+    const reason = async (id, type) => (await queue(id, type))[0]?.error_message;
+    const hold = () => { s.line.chat.status.push = Array(40).fill(503); };
+    const free = async () => { s.line.chat.status.push = []; await s.query("UPDATE notification_queue SET next_attempt_at = UTC_TIMESTAMP() WHERE status = 'pending' AND admin_id IS NULL"); await run(); };
+    hold();
+    const unlinked = await applyLine(); await until(async () => (await queue(unlinked.id))[0]?.retry_count === 1);
+    await unlinked.c.post('/api/v1/line/unlink-account');
+    const stale = await applyLine(); await until(async () => (await queue(stale.id))[0]?.retry_count === 1);
+    await move(admin, stale.id, 'submitted', 'rejected', 'ไม่ตรงคุณสมบัติ'); await until(async () => (await queue(stale.id, 'rejected'))[0]?.retry_count === 1);
+    await s.query("UPDATE applications SET status = 'cancelled' WHERE id = :id", { id: stale.id });
+    const blocked = await applyLine(); await until(async () => (await queue(blocked.id))[0]?.retry_count === 1);
+    await s.query("UPDATE line_users SET friend_status = 'blocked' WHERE line_user_id = :u", { u: blocked.u });
+    await free();
+    assert.match(await reason(unlinked.id), /ยกเลิกการเชื่อม/);
+    assert.match(await reason(stale.id, 'rejected'), /ล้าสมัย/);
+    assert.match(await reason(blocked.id), /บล็อก/);
+    for (const x of [unlinked, blocked]) assert.equal(pushed(x.u).length, 0);
+    const u = uid(); s.line.chat.strangers.add(u);
+    const c = new Client(s.base); await s.lineLogin(c, u);
+    const st = await s.apply({ sessionId: await s.newSession() }, c);
+    await until(async () => (await queue(st.body.data.id))[0]?.status === 'cancelled');
+    assert.match(await reason(st.body.data.id), /ยังไม่ได้เพิ่มเพื่อน/);
+    const t = { tone: 'green', heading: 'ห', body: 'บ {{name}}', buttonLabel: 'ดู' };
+    await admin.put(`${N}/templates/submitted`, { ...t, active: false });
+    const mute = await applyLine(); await run();
+    assert.equal((await queue(mute.id)).length, 0);
+    await admin.put(`${N}/templates/submitted`, { ...t, active: true });
+  });
+
+  test('ส่งซ้ำเอง: ขัดข้องชั่วคราวได้ข้อความเดียว, LINE รับแล้วแต่ตอบผิด, โควตาหมดไม่เสียรอบ, token ผิด, ล้มเหลวถาวรแล้วกดส่งใหม่', async () => {
+    const { forgetQuota } = await import('../src/integrations/lineMessagingClient.js');
+    const again = async (id) => { await s.query('UPDATE notification_queue SET next_attempt_at = UTC_TIMESTAMP() WHERE application_id = :id', { id }); await run(); return (await queue(id))[0]; };
+    s.line.chat.status.push = ['lost'];
+    const lost = await applyLine(); await until(async () => (await queue(lost.id))[0]?.retry_count === 1);
+    assert.equal((await again(lost.id)).status, 'sent');
+    assert.equal(pushed(lost.u).length, 1);
+    s.line.chat.used = 1000; forgetQuota();
+    const q = await applyLine(); await until(async () => /โควตา/.test((await queue(q.id))[0]?.error_message ?? ''));
+    assert.equal((await queue(q.id))[0].retry_count, 0);
+    s.line.chat.used = 0; forgetQuota();
+    assert.equal((await again(q.id)).status, 'sent');
+    s.line.chat.status.push = [401];
+    const tok = await applyLine(); await until(async () => /token/.test((await queue(tok.id))[0]?.error_message ?? ''));
+    assert.equal((await again(tok.id)).status, 'sent');
+    s.line.chat.status.push = [400];
+    const bad = await applyLine(); const row = await until(async () => { const r = (await queue(bad.id))[0]; return r?.status === 'failed' && r; });
+    assert.equal((await admin.post(`${N}/queue/${row.id}`, { action: 'cancel' })).status, 409);
+    assert.equal((await admin.post(`${N}/queue/${row.id}`, { action: 'retry' })).status, 200);
+    await until(() => pushed(bad.u).length === 1);
+    await until(async () => (await admin.get(`${N}/queue/${row.id}/logs`)).body.data.length === 2);
+    await s.query("INSERT INTO notification_queue (line_user_id, application_id, notification_type, scheduled_at, expires_at, next_attempt_at, idempotency_key, retry_key, created_at, status, claimed_at, claim_token) SELECT line_user_id, id, 'submitted', UTC_TIMESTAMP(), DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 HOUR), UTC_TIMESTAMP(), 'crash-1', UUID(), UTC_TIMESTAMP(), 'processing', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 6 MINUTE), 'x' FROM applications WHERE id = :id", { id: bad.id });
+    await run();
+    assert.equal((await s.query("SELECT status FROM notification_queue WHERE idempotency_key = 'crash-1'"))[0].status, 'sent');
+  });
+
+  test('เตือนก่อนวัน 09:00 ไทย/ก่อนเริ่ม/แบบประเมิน: ครั้งเดียว, เลื่อนรุ่นแล้วเตือนใหม่, เฉพาะผู้ได้รับอนุมัติ', async () => {
+    const { scheduleReminders } = await svc();
+    const a = await applyLine();
+    const other = await applyLine();
+    for (const x of [a]) { await approveAllDocs(admin, x.id); await move(admin, x.id, 'under_review', 'documents_approved'); await move(admin, x.id, 'documents_approved', 'approved'); }
+    const [{ session_id: sid }] = await s.query('SELECT session_id FROM applications WHERE id = :id', { id: a.id });
+    await s.query('UPDATE applications SET session_id = :sid WHERE id = :id', { sid, id: other.id });
+    const start = new Date('2031-03-10T02:00:00Z'); // 09:00 ไทย
+    const setStart = (d) => s.query('UPDATE training_sessions SET starts_at = :d, ends_at = :e WHERE id = :sid', { sid, d, e: new Date(d.getTime() + 6 * 3_600_000) });
+    await setStart(start);
+    const at = (iso) => scheduleReminders(new Date(iso));
+    const count = async (type) => (await queue(a.id, type)).length;
+    await at('2031-03-07T01:59:00Z'); assert.equal(await count('reminder_day'), 0);
+    await at('2031-03-07T02:00:00Z'); assert.equal(await count('reminder_day'), 1);
+    await at('2031-03-07T02:05:00Z'); assert.equal(await count('reminder_day'), 1);
+    assert.equal((await queue(other.id, 'reminder_day')).length, 0);
+    await at('2031-03-09T23:59:00Z'); assert.equal(await count('reminder_hour'), 0);
+    await at('2031-03-10T00:00:00Z'); assert.equal(await count('reminder_hour'), 1);
+    const moved = new Date('2031-03-20T06:00:00Z');
+    await setStart(moved);
+    await s.query('UPDATE notification_queue SET next_attempt_at = UTC_TIMESTAMP(), expires_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 HOUR) WHERE application_id = :id AND notification_type LIKE \'reminder%\'', { id: a.id });
+    await run();
+    assert.ok((await queue(a.id, 'reminder_day')).every((q) => q.status === 'cancelled' && /เวลาอบรมเปลี่ยน/.test(q.error_message)));
+    await at('2031-03-17T02:00:00Z'); assert.equal(await count('reminder_day'), 2);
+    await toggle(true, { evaluationUrl: 'https://forms.example.com/x' });
+    await s.query("UPDATE applications SET status = 'attended' WHERE id = :id", { id: a.id });
+    await at('2031-03-20T13:00:00Z'); assert.equal(await count('evaluation'), 1);
+    assert.equal((await queue(other.id, 'evaluation')).length, 0);
+    await toggle(true);
+  });
+
+  test('ข้อความ: ตัวแปรผิดถูกปฏิเสธ, ข้อมูลผู้สมัครไม่ถูกแทนซ้ำ, ตัวอย่าง, ส่งทดสอบต้องเชื่อม LINE, สร้าง/ลบข้อความเอง', async () => {
+    const t = { tone: 'green', heading: 'สวัสดี {{name}}', body: '{{application_no}}', buttonLabel: 'ดู', active: true };
+    assert.equal(code(await admin.post(`${N}/preview`, { ...t, body: '{{national_id}}' })), 'UNKNOWN_VARIABLE');
+    assert.equal((await admin.post(`${N}/preview`, t)).body.data.heading, 'สวัสดี ต้นข้าว ใจดี');
+    const { compose, SAMPLE } = await import('../src/services/notificationTemplates.js');
+    assert.equal(compose({ tone: 'green', heading: '{{name}}', body: 'x' }, { ...SAMPLE, full_name: '{{reason}} {{application_no}}' }).heading, '{{reason}} {{application_no}}');
+    const fresh = await s.adminClient('admin');
+    assert.equal(code(await fresh.post(`${N}/test`, t)), 'ADMIN_NOT_LINKED');
+    const u = await linkAdmin(fresh);
+    assert.equal((await fresh.post(`${N}/test`, t)).status, 200);
+    assert.ok(JSON.stringify(pushed(u)).includes('[ทดสอบ]'));
+    const made = (await admin.post(`${N}/templates`, { ...t, title: 'ของฉัน' })).body.data.key;
+    assert.ok((await admin.get(`${N}/templates`)).body.data.items.some((x) => x.key === made && x.custom));
+    assert.equal((await admin.request('DELETE', `${N}/templates/${made}`)).status, 200);
+    assert.equal((await admin.request('DELETE', `${N}/templates/approved`)).status, 404);
+  });
+
+  test('แจ้งเจ้าหน้าที่: เชื่อมด้วยรหัส, รวมหลายเหตุการณ์เป็นข้อความเดียว, ตามสิทธิ์, หยุดเมื่อปิดบัญชี และคำสั่งไม่กลายเป็นแชต', async () => {
+    const boss = await s.adminClient('admin');
+    const u = await linkAdmin(boss);
+    assert.equal((await s.query('SELECT COUNT(*) n FROM chat_messages m JOIN chat_conversations c ON c.id = m.conversation_id JOIN line_users l ON l.id = c.line_user_id WHERE l.line_user_id = :u', { u }))[0].n, 0);
+    await hook(uid(), 'ADMIN-ZZZZZZZZZZ');
+    const { code: once } = (await boss.post(`${N}/link-code`)).body.data;
+    const u2 = uid(); await hook(u2, once.toLowerCase());
+    await hook(uid(), once); // รหัสใช้ได้ครั้งเดียว
+    assert.equal((await s.query('SELECT l.line_user_id u FROM admin_users a JOIN line_users l ON l.id = a.line_user_id WHERE a.id = :id', { id: boss.admin.id }))[0].u, u2);
+    assert.equal((await prefs(boss, ['new_applicant', 'privacy_request'])).status, 400); // admin ไม่มีสิทธิ์ลบข้อมูล
+    assert.equal((await prefs(boss, ['new_applicant'])).status, 200);
+    for (let i = 0; i < 3; i += 1) await s.apply({ sessionId: await s.newSession() });
+    await run();
+    const mine = () => s.query("SELECT * FROM notification_queue WHERE admin_id = :id AND notification_type = 'admin_new_applicant'", { id: boss.admin.id });
+    assert.equal(pushed(u2).length, 0);
+    const rows = await mine();
+    assert.equal(rows.reduce((t, r) => t + r.item_count, 0), 3);
+    await closeWindows(); await run();
+    assert.equal(pushed(u2).length, rows.length);
+    assert.ok(JSON.stringify(pushed(u2)).includes('ผู้สมัครใหม่'));
+    await s.apply({ sessionId: await s.newSession() }); await run();
+    await s.query("UPDATE admin_users SET status = 'disabled' WHERE id = :id", { id: boss.admin.id });
+    await closeWindows(); await run();
+    assert.equal(pushed(u2).length, rows.length);
+  });
+
+  test('ส่งกลุ่ม: นับผู้รับจริง, คนเดียวหลายใบได้ครั้งเดียว, กดซ้ำไม่ซ้ำ, จำนวนเปลี่ยนต้องยืนยันใหม่, ตั้งเวลา/ยกเลิก, คัดค้านได้, โควตาไม่พอ', async () => {
+    const sessionId = await s.newSession();
+    const a = await applyLine({ sessionId }); const b = await applyLine({ sessionId });
+    await s.apply({ sessionId });
+    const second = await s.newSession();
+    await s.apply({ sessionId: second }, a.c);
+    const filter = { sessionId, statuses: ['submitted'] };
+    const est = (f = filter) => admin.post(`${N}/campaigns/estimate`, f).then((r) => r.body.data);
+    assert.equal((await est()).count, 2);
+    const base = { title: 'ข่าว', tone: 'purple', heading: 'ประกาศ', body: 'ถึงคุณ{{name}}', filter, clientKey: crypto.randomUUID() };
+    const make = (over) => admin.post(`${N}/campaigns`, { ...base, clientKey: crypto.randomUUID(), expectedCount: 2, ...over });
+    assert.equal(code(await make({ expectedCount: 5 })), 'COUNT_CHANGED');
+    const key = crypto.randomUUID();
+    const rs = await Promise.all([make({ clientKey: key }), make({ clientKey: key })]);
+    assert.deepEqual(rs.map((r) => r.status), [201, 201], JSON.stringify(rs.map((r) => r.body)));
+    assert.equal(rs[0].body.data.id, rs[1].body.data.id);
+    const got = (u) => pushed(u).filter((x) => JSON.stringify(x).includes('ประกาศ')).length;
+    await until(() => got(a.u) === 1 && got(b.u) === 1);
+    const later = await make({ scheduledAt: new Date(Date.now() + 3_600_000).toISOString() });
+    await run();
+    assert.equal(got(a.u), 1);
+    assert.equal((await admin.post(`${N}/campaigns/${later.body.data.id}/cancel`)).body.data.cancelled, 2);
+    await hook(b.u, 'หยุดรับข่าว');
+    assert.equal((await est()).count, 1);
+    await hook(b.u, 'รับข่าว');
+    assert.equal((await est()).count, 2);
+    const { forgetQuota } = await import('../src/integrations/lineMessagingClient.js');
+    s.line.chat.used = 999; forgetQuota();
+    assert.equal(code(await make()), 'QUOTA_EXCEEDED');
+    s.line.chat.used = 0; forgetQuota();
+    assert.equal((await est({ sessionId, statuses: ['passed'] })).count, 0);
+    assert.equal((await admin.post(`${N}/campaigns/estimate`, { sessionId, statuses: ['rejected'] })).status, 400);
+  });
+
+  test('สิทธิ์ และ PDPA: สตาฟจัดการไม่ได้แต่เชื่อม LINE ตัวเองได้; ลบใบสมัครแล้วคิวหาย; เจ้าหน้าที่ไม่ถูกลบเป็นบัญชีค้าง', async () => {
+    const staff = await s.adminClient('training_staff');
+    for (const p of ['state', 'templates', 'queue', 'campaigns', 'recipients']) assert.equal((await staff.get(`${N}/${p}`)).status, 403, p);
+    const u = await linkAdmin(staff);
+    const a = await applyLine();
+    await until(async () => (await queue(a.id))[0]?.status === 'sent');
+    const [{ session_id: sid }] = await s.query('SELECT session_id FROM applications WHERE id = :id', { id: a.id });
+    await s.query('UPDATE training_sessions SET ends_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 61 MONTH) WHERE id = :sid', { sid });
+    await s.query('UPDATE line_users SET last_interaction_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 MONTH) WHERE line_user_id = :u', { u });
+    const purge = (kind, ids) => admin.post(`${A}/retention/purge`, { kind, ids, password: admin.admin.password, confirm: 'ลบถาวร' });
+    await admin.put(`${A}/legal`, { controller_name: 'ก', controller_address: 'ก', controller_contact: 'ก', dpo_contact: '', basis_main: 'contract', recipients: 'ก', retention_applications: 60, retention_documents: 12, retention_rejected: 6, retention_logs: 90, retention_chats: 12, refund_policy: 'ก', copyright_owner: 'ก', effective_date: '2026-12-01', approved: true });
+    await s.refreshVersion();
+    assert.equal((await purge('applications', [a.id])).body.data.purged, 1);
+    assert.equal((await queue(a.id)).length, 0);
+    const [l] = await s.query('SELECT id FROM line_users WHERE line_user_id = :u', { u });
+    assert.equal((await purge('line_users', [l.id])).body.data.purged, 0);
+    await toggle(false);
+  });
+});
+
 describe('ความทนทานเมื่อใช้พร้อมกัน', () => {
   test('คำสั่งเดี่ยวที่แพ้ deadlock ถูกลองใหม่จนสำเร็จ', async () => {
     const { pool, query } = await import('../src/config/db.js');

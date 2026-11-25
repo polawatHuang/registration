@@ -36,6 +36,8 @@ export async function quota({ fresh = false } = {}) {
   quotaCache = { at: Date.now(), value };
   return value;
 }
+/** ปรับยอดในหน่วยความจำ ไม่ต้องถาม LINE ใหม่ทุกข้อความ */
+export const countPush = (status) => { const v = quotaCache.value; if (status === 200 && v) { v.used += 1; if (v.remaining !== null) v.remaining -= 1; } };
 export const forgetQuota = () => { quotaCache = { at: 0, value: null }; };
 
 const MAX_MEDIA = 10 * 1024 * 1024;

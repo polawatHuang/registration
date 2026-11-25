@@ -4,6 +4,7 @@ import * as adm from '../controllers/adminController.js';
 import { requireAdmin, requirePermission as can } from '../middleware/adminAuth.js';
 import { loadApplicant, requireApplicant, requireLine } from '../middleware/applicantAuth.js';
 import * as chat from '../controllers/chatController.js';
+import * as notify from '../controllers/notificationController.js';
 import { apiLimiter, authLimiter, chatLimiter, checkOrigin, submitLimiter, webhookLimiter } from '../middleware/security.js';
 import * as ai from '../controllers/aiController.js';
 import { uploadDocuments, uploadKnowledge } from '../middleware/upload.js';
@@ -14,7 +15,8 @@ api.get('/health', pub.health);
 api.post('/internal/jobs/run', authLimiter, pub.jobs);
 // ลายเซ็น LINE ต้องคำนวณจาก raw body
 api.post('/line/webhook', webhookLimiter, express.raw({ type: () => true, limit: '1mb' }), chat.webhook);
-api.use((req, res, next) => (req.path.startsWith('/admin/chat/') ? chatLimiter : apiLimiter)(req, res, next), checkOrigin);
+// เจ้าหน้าที่หลายคนใช้ IP สำนักงานเดียวกัน จึงให้เพดานสูงกว่าหน้าเว็บทั่วไป (ล็อกอินมี authLimiter แยก)
+api.use((req, res, next) => (/^\/(admin|ai)\//.test(req.path) ? chatLimiter : apiLimiter)(req, res, next), checkOrigin);
 
 api.get('/catalog/universities', pub.universities);
 api.get('/catalog/sessions', pub.sessions);
@@ -71,6 +73,27 @@ admin.post('/retention/requests/:id/decide', authLimiter, adm.retentionDecide);
 admin.post('/retention/requests/:id/notice', adm.retentionNotice);
 admin.get('/retention/log', adm.retentionLog);
 admin.post('/applications/:id/hold', can('retention.manage'), adm.setHold);
+// ทุกคนเชื่อม LINE ของตัวเองได้ ที่เหลือต้องมีสิทธิ์
+admin.post('/notifications/link-code', authLimiter, notify.linkCode);
+admin.post('/notifications/unlink', notify.unlink);
+admin.use('/notifications', can('notifications.manage'));
+admin.get('/notifications/state', notify.state);
+admin.put('/notifications/settings', notify.settings);
+admin.get('/notifications/templates', notify.templates);
+admin.post('/notifications/templates', notify.createTemplate);
+admin.put('/notifications/templates/:key', notify.saveTemplate);
+admin.delete('/notifications/templates/:key', notify.removeTemplate);
+admin.post('/notifications/preview', notify.preview);
+admin.post('/notifications/test', authLimiter, notify.test);
+admin.get('/notifications/queue', notify.queue);
+admin.get('/notifications/queue/:id/logs', notify.logs);
+admin.post('/notifications/queue/:id', notify.act);
+admin.post('/notifications/campaigns/estimate', notify.estimate);
+admin.get('/notifications/campaigns', notify.campaigns);
+admin.post('/notifications/campaigns', notify.createCampaign);
+admin.post('/notifications/campaigns/:id/cancel', notify.cancelCampaign);
+admin.get('/notifications/recipients', notify.recipients);
+admin.put('/notifications/recipients/:id', notify.setRecipient);
 admin.use('/chat', can('chat.reply'));
 admin.get('/chat/state', chat.state);
 admin.put('/chat/ai', can('chat.manage'), chat.setAi);

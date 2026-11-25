@@ -5,6 +5,7 @@ import * as apps from '../services/applicationService.js';
 import * as email from '../services/emailService.js';
 import * as integrations from '../services/integrationService.js';
 import * as legal from '../services/legalService.js';
+import { kick as notify } from '../services/notificationService.js';
 import * as retention from '../services/retentionService.js';
 import * as catalog from '../services/catalogService.js';
 import * as adminRepo from '../repositories/adminRepository.js';
@@ -55,6 +56,7 @@ export async function reviewDocument(req, res) {
 }
 export async function changeStatus(req, res) {
   await apps.transition(idOf(req), parse(s.statusSchema, req.body), actor(req));
+  notify();
   ok(res, await apps.adminDetail(idOf(req), req.admin));
 }
 const thaiDate = new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Bangkok' });
@@ -92,7 +94,7 @@ export async function retentionDue(req, res) {
   const { items, total } = await retention.due(parse(s.dueKind, req.params.kind), p);
   paged(res, items, total, p);
 }
-export const retentionPurge = async (req, res) => ok(res, await retention.purge(parse(s.purgeSchema, req.body), actor(req)), { message: 'ดำเนินการแล้ว' });
+export async function retentionPurge(req, res) { ok(res, await retention.purge(parse(s.purgeSchema, req.body), actor(req)), { message: 'ดำเนินการแล้ว' }); notify(); }
 export async function retentionRequests(req, res) { const p = parse(s.pageSchema, req.query); const { items, total } = await retention.requests(p); paged(res, items, total, p); }
 export async function retentionLog(req, res) { const p = parse(s.pageSchema, req.query); const { items, total } = await retention.log(p); paged(res, items, total, p); }
 export async function retentionDecide(req, res) { await retention.decide(idOf(req), parse(s.decideSchema, req.body), actor(req)); ok(res, {}, { message: 'บันทึกแล้ว' }); }

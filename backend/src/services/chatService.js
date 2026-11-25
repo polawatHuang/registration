@@ -7,6 +7,8 @@ import { isConfigured } from '../integrations/minimaxClient.js';
 import { getSettings, setSetting } from '../repositories/catalogRepository.js';
 import { insertAudit } from '../repositories/auditRepository.js';
 import { answer } from './aiService.js';
+import { command, kick as notify } from './notificationService.js';
+import { insertEvent } from '../repositories/notificationRepository.js';
 import { adminMessage, aiMessage, HANDOFF, HUMAN_TEXT, welcome } from './chatTemplates.js';
 import { readDocument, storeDocument } from './storageService.js';
 import { flushFiles } from './retentionService.js';
@@ -95,6 +97,8 @@ async function handle(e, attempts) {
     await repo.setFriend(user.id, 'friend', conn);
     const token = canSend && typeof e.replyToken === 'string' ? e.replyToken.slice(0, 100) : null;
     if (e.type === 'follow') { await repo.setToken(conv.id, token, at, conn); return { user, conv }; }
+    // คำสั่ง (รหัสเชื่อมเจ้าหน้าที่ / หยุดรับข่าว) ไม่เก็บเป็นแชต และไม่เข้า AI
+    if (e.message?.type === 'text' && await isCommand(e.message.text)) return { user, conv, command: String(e.message.text), token };
     const lineMessageId = String(e.message?.id ?? '').slice(0, 64);
     const dup = lineMessageId && await repo.findByLineMessage(lineMessageId, conn);
     if (dup) return { user, conv, messageId: dup.id, text: dup.message_type === 'text' ? dec(dup.content_enc) : null, dup: true };
@@ -104,6 +108,7 @@ async function handle(e, attempts) {
     return { user, conv, messageId, text: e.message?.type === 'text' ? text : null };
   });
   if (e.type !== 'unfollow' && (!saved.user.profile_at || Date.now() - new Date(saved.user.profile_at) > 86_400_000)) await refreshProfile(saved.user);
+  if (saved.command) { const reply = attempts === 1 ? await command(saved.command, saved.user) : null; if (reply && saved.token) await line.reply(saved.token, [adminMessage(reply)]); return undefined; }
   if (e.type === 'follow') return canSend && attempts === 1 && Date.now() - at < FRESH_MS ? sendWelcome(saved.conv.id, saved.user) : undefined;
   if (e.type !== 'message') return undefined;
   if (['image', 'file'].includes(e.message.type)) await fetchMedia(saved.messageId, e.message);
@@ -112,6 +117,14 @@ async function handle(e, attempts) {
   return undefined;
 }
 
+const COMMANDS = /^\s*(ADMIN-[2-9A-HJ-NP-Z]{10}|หยุดรับข่าว|รับข่าว)\s*$/i;
+const isCommand = (t) => typeof t === 'string' && COMMANDS.test(t);
+/** เรียกเจ้าหน้าที่: ติดป้ายในแชต และส่งเหตุการณ์แจ้งเตือน */
+async function callStaff(conversationId, reason, event = 'chat.ai_unanswered') {
+  await repo.setAttention(conversationId, reason);
+  await insertEvent(event, 'chat', conversationId);
+  notify();
+}
 async function refreshProfile(user) {
   const r = await line.profile(user.line_user_id);
   if (r.status !== 200) return;
@@ -184,14 +197,14 @@ async function maybeAnswer(conversationId, messageId, text, at, lineUid) {
   if (Date.now() - at > FRESH_MS) { await repo.setAttention(conversationId, 'ข้อความเข้าช้า AI ไม่ได้ตอบ'); await repo.aiDone(messageId); return; }
   if (text.trim() === HUMAN_TEXT || HUMAN.test(text)) {
     await sendAi(conversationId, messageId, HANDOFF, { mode: 'handoff' }, { attention: 'ขอคุยกับเจ้าหน้าที่', stop: true });
-  } else if (await repo.countAiReplies(conversationId) >= AI_PER_HOUR) await repo.setAttention(conversationId, 'ถามเกินจำนวนที่ AI ตอบต่อชั่วโมง');
-  else if (!(await isConfigured())) await repo.setAttention(conversationId, 'ยังไม่ได้ตั้งค่า MiniMax');
+  } else if (await repo.countAiReplies(conversationId) >= AI_PER_HOUR) await callStaff(conversationId, 'ถามเกินจำนวนที่ AI ตอบต่อชั่วโมง');
+  else if (!(await isConfigured())) await callStaff(conversationId, 'ยังไม่ได้ตั้งค่า MiniMax');
   else {
     line.loading(lineUid);
     const r = await answer(text.slice(0, 500));
     const meta = { mode: r.mode, sources: (r.sources ?? []).slice(0, 5).map((s) => s.title.slice(0, 80)), tokens: r.tokens ?? null };
     if (r.answer) await sendAi(conversationId, messageId, r.answer, meta, { attention: ['fallback', 'error'].includes(r.mode) ? (r.mode === 'error' ? 'MiniMax ขัดข้อง' : 'AI ไม่มีข้อมูลตอบ') : null });
-    else await repo.setAttention(conversationId, 'AI ไม่มีข้อมูลตอบ');
+    else await callStaff(conversationId, 'AI ไม่มีข้อมูลตอบ');
   }
   await repo.aiDone(messageId);
 }
@@ -203,11 +216,12 @@ async function sendAi(conversationId, inboundId, text, meta, { attention = null,
     if (c.ai_mode !== 'auto' || !(await aiEnabled()) || await repo.adminRepliedAfter(conversationId, inboundId, conn)) return null;
     const id = await repo.insertMessage({ conversationId, direction: 'out', sender: 'ai', type: 'text', content: enc(text), status: 'pending', retryKey, aiMeta: JSON.stringify(meta).slice(0, 1000) }, conn);
     await repo.onOutbound({ id: conversationId, preview: preview(text), sender: 'ai' }, conn);
-    if (attention) await repo.setAttention(conversationId, attention, conn);
+    if (attention) { await repo.setAttention(conversationId, attention, conn); await insertEvent(stop ? 'chat.help_requested' : 'chat.ai_unanswered', 'chat', conversationId, conn); }
     if (stop) await repo.setAiMode(conversationId, 'off', conn);
     return { conv: c, id };
   });
-  if (job && !(await deliver(job.conv, job.id, retryKey, [aiMessage(text)]))) await repo.setAttention(conversationId, 'AI ส่งข้อความไม่สำเร็จ');
+  if (job && !(await deliver(job.conv, job.id, retryKey, [aiMessage(text)]))) await callStaff(conversationId, 'AI ส่งข้อความไม่สำเร็จ');
+  if (job && attention) notify();
 }
 
 // ---------- หน้าเจ้าหน้าที่ ----------

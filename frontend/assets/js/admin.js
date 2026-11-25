@@ -2,7 +2,7 @@ import { get, send } from './api.js';
 import { $, h, icon } from './ui.js';
 
 export const MENU = [
-  ['dashboard', 'grid-1x2-fill', 'ภาพรวม', 'applicants.view'], ['applications', 'people-fill', 'ผู้สมัคร', 'applicants.view'], ['chat', 'chat-dots-fill', 'แชต', 'chat.reply'], ['catalog', 'ui-checks', 'ตัวเลือกฟอร์ม', 'catalog.manage'],
+  ['dashboard', 'grid-1x2-fill', 'ภาพรวม', 'applicants.view'], ['applications', 'people-fill', 'ผู้สมัคร', 'applicants.view'], ['chat', 'chat-dots-fill', 'แชต', 'chat.reply'], ['notifications', 'bell-fill', 'แจ้งเตือน', 'notifications.manage'], ['catalog', 'ui-checks', 'ตัวเลือกฟอร์ม', 'catalog.manage'],
   ['ai-knowledge', 'robot', 'คลัง AI', 'ai.manage'], ['users', 'person-badge-fill', 'ผู้ใช้', 'users.manage'], ['retention', 'trash3-fill', 'ลบข้อมูล', 'retention.manage'], ['audit-logs', 'shield-lock-fill', 'บันทึก', 'audit.view'], ['settings', 'gear-fill', 'ตั้งค่า', 'settings.manage'],
 ];
 export const STATUS = { submitted: ['warn', 'สมัครสำเร็จ รอตรวจเอกสาร'], under_review: ['info', 'กำลังตรวจสอบเอกสาร'], documents_incomplete: ['bad', 'เอกสารไม่ครบ/ต้องแก้ไข'], documents_approved: ['ok', 'เอกสารผ่านการตรวจสอบ'], approved: ['ok', 'อนุมัติการสมัคร'],

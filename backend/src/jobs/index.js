@@ -1,5 +1,6 @@
 import { query } from '../config/db.js';
 import { flushFiles, syncLedger } from '../services/retentionService.js';
+import { job } from '../services/notificationService.js';
 import { maintenance } from '../services/chatService.js';
 import { processQueue } from '../services/emailService.js';
 
@@ -8,6 +9,7 @@ const JOBS = {
   // เก็บงานลบไฟล์ที่ค้าง ไม่มีการลบข้อมูลใหม่อัตโนมัติ
   purgeFiles: async () => ({ ...(await flushFiles()), ...(await syncLedger()) }),
   chat: () => maintenance(),
+  notifications: () => job(),
   emails: () => processQueue(30),
   cleanup: async () => {
     const del = async (sql) => (await query(sql)).affectedRows;

@@ -47,5 +47,9 @@
 
 `POST /line/webhook` ตรวจ `x-line-signature` จาก raw body
 
+## แจ้งเตือน (`/admin/notifications`, สิทธิ์ notifications.manage)
+`GET /state` · `PUT /settings` · `GET/POST /templates`, `PUT/DELETE /templates/:key` · `POST /preview`, `/test` · `GET /queue`, `/queue/:id/logs`, `POST /queue/:id` (retry/cancel) · `POST /campaigns/estimate`, `GET/POST /campaigns`, `POST /campaigns/:id/cancel` · `GET /recipients`, `PUT /recipients/:id`
+`POST /link-code`, `/unlink` ใช้ได้ทุกคนที่ล็อกอิน (เชื่อม LINE ของตัวเอง)
+
 ## งานตั้งเวลา
 `POST /internal/jobs/run` พร้อม header `X-Jobs-Secret`

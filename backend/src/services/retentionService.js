@@ -6,6 +6,7 @@ import { logger } from '../config/logger.js';
 import * as repo from '../repositories/retentionRepository.js';
 import * as apps from '../repositories/applicationRepository.js';
 import * as chatRepo from '../repositories/chatRepository.js';
+import { insertEvent } from '../repositories/notificationRepository.js';
 import { insertAudit } from '../repositories/auditRepository.js';
 import { confirmPassword } from './adminAuthService.js';
 import { getLegal } from './legalService.js';
@@ -136,6 +137,7 @@ export async function createRequest(applicationId, note, ip) {
     if (err.code === 'ER_DUP_ENTRY') throw conflict('REQUEST_EXISTS', 'มีคำขอที่อยู่ระหว่างพิจารณาแล้ว');
     throw err;
   }
+  await insertEvent('erasure.requested', 'application', applicationId);
   await insertAudit({ actorType: 'applicant', action: 'erasure.request', entityType: 'application', entityId: applicationId, ip });
 }
 export async function cancelRequest(applicationId, ip) {

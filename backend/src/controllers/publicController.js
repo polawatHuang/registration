@@ -5,6 +5,7 @@ import * as catalog from '../services/catalogService.js';
 import * as apps from '../services/applicationService.js';
 import { getLegal } from '../services/legalService.js';
 import { lineLoginConfig } from '../services/integrationService.js';
+import { kick as notify } from '../services/notificationService.js';
 import { kick } from '../services/emailService.js';
 import { emailConfig } from '../services/integrationService.js';
 import * as line from '../services/lineLoginService.js';
@@ -31,9 +32,11 @@ export const options = async (_req, res) => ok(res, await catalog.publicOptions(
 export const legal = async (_req, res) => ok(res, await getLegal());
 export async function withdrawConsent(req, res) {
   ok(res, await apps.withdrawSensitive(req.applicant, parse(id, req.params.id), req.ip), { message: 'ถอนความยินยอมแล้ว' });
+  notify();
 }
 export async function requestErasure(req, res) {
   ok(res, await apps.requestErasure(req.applicant, parse(id, req.params.id), parse(erasureSchema, req.body).note, req.ip), { message: 'ส่งคำขอแล้ว' });
+  notify();
 }
 export async function cancelErasure(req, res) {
   ok(res, await apps.cancelErasure(req.applicant, parse(id, req.params.id), req.ip), { message: 'ยกเลิกคำขอแล้ว' });
@@ -46,6 +49,7 @@ export async function submit(req, res) {
   const csrfToken = await issueSession(res, req.applicant, req.applicant?.line_user_id ? {} : { applicationId: row.id });
   ok(res, { ...(await apps.applicantView(row)), csrfToken, emailEnabled: Boolean(await emailConfig()) }, { status: 201, message: 'ส่งใบสมัครสำเร็จ' });
   kick();
+  notify();
 }
 export async function access(req, res) {
   const app = await apps.verifyAccess(parse(accessSchema, req.body), req.ip);
@@ -57,6 +61,7 @@ export async function myStatus(req, res) {
 }
 export async function resubmit(req, res) {
   ok(res, await apps.resubmit(req.applicant, parse(id, req.params.id), req.files ?? {}, req.ip), { message: 'ส่งเอกสารใหม่แล้ว' });
+  notify();
 }
 export async function session(req, res) {
   const s = req.applicant;

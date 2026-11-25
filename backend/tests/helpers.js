@@ -41,7 +41,7 @@ async function startSmtpMock() {
 async function startLineMock() {
   const codes = new Map();
   const tokens = new Map();
-  const mock = { overrides: {}, codes, aiReply: null, aiRequests: [], aiDelay: null, chat: { sent: [], keys: new Set(), status: { reply: [], push: [] }, quota: { type: 'limited', value: 1000 }, used: 0, loading: 0, content: PNG } };
+  const mock = { overrides: {}, codes, aiReply: null, aiRequests: [], aiDelay: null, chat: { sent: [], keys: new Set(), status: { reply: [], push: [] }, quota: { type: 'limited', value: 1000 }, used: 0, loading: 0, strangers: new Set(), content: PNG } };
   const server = http.createServer(async (req, res) => {
     let body = '';
     for await (const c of req) body += c;
@@ -64,6 +64,7 @@ async function startLineMock() {
       if (st === 200 || st === 'lost') { if (key) mock.chat.keys.add(key); mock.chat.sent.push({ kind, key, ...JSON.parse(body) }); if (st === 'lost') return json(500, {}); return json(200, {}); }
       return json(st, {});
     }
+    if (req.url.startsWith('/v2/bot/profile/') && mock.chat.strangers.has(req.url.split('/').pop())) return json(404, {});
     if (req.url.startsWith('/v2/bot/profile/')) return json(200, { displayName: `คุณ ${req.url.split('/').pop().slice(0, 12)}`, pictureUrl: 'https://profile.line-scdn.net/x' });
     if (req.url === '/v2/bot/chat/loading/start') { mock.chat.loading += 1; return json(202, {}); }
     if (req.url === '/v2/bot/message/quota') return json(200, mock.chat.quota);

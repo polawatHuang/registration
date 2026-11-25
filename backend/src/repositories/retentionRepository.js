@@ -1,4 +1,5 @@
 import { query, queryOne } from '../config/db.js';
+import * as notifications from './notificationRepository.js';
 import { deleteForLineUser } from './chatRepository.js';
 
 const APP = `SELECT a.id, a.application_no, a.full_name, a.status, a.session_id, s.session_name, s.ends_at, u.name AS university_name
@@ -13,7 +14,7 @@ const WHERE = {
   withdrawn: `a.hold_at IS NULL AND EXISTS (SELECT 1 FROM consents c JOIN application_documents d ON d.application_id = c.application_id AND d.doc_type = 'id_card'
     WHERE c.application_id = a.id AND c.purpose = 'sensitive_id_card' AND c.withdrawn_at IS NOT NULL AND d.file_purged_at IS NULL AND d.created_at <= c.withdrawn_at)`,
 };
-const LINE_WHERE = `NOT EXISTS (SELECT 1 FROM applications a WHERE a.line_user_id = l.id)
+const LINE_WHERE = `NOT EXISTS (SELECT 1 FROM admin_users au WHERE au.line_user_id = l.id) AND NOT EXISTS (SELECT 1 FROM applications a WHERE a.line_user_id = l.id)
   AND NOT EXISTS (SELECT 1 FROM line_account_links k WHERE k.line_user_id = l.id AND k.status = 'active') AND ${PAST('COALESCE(l.last_interaction_at, l.created_at)')}`;
 const LOG_WHERE = 'created_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL :limit DAY)';
 
@@ -52,6 +53,7 @@ export const rejectPurgedIdCard = (applicationId, reason, conn) => query(`UPDATE
 export async function deleteApplication(app, conn) {
   const id = app.id;
   await purgeDocumentFiles(id, conn);
+  await notifications.deleteForApplication(id, conn);
   for (const sql of ['DELETE FROM email_queue WHERE application_id = :id', 'DELETE FROM consents WHERE application_id = :id', 'DELETE FROM application_documents WHERE application_id = :id',
     'DELETE FROM application_status_history WHERE application_id = :id', 'DELETE FROM applicant_sessions WHERE application_id = :id',
     "DELETE FROM domain_events WHERE aggregate_type = 'application' AND aggregate_id = :id",
@@ -67,15 +69,17 @@ export async function deleteApplication(app, conn) {
   if (app.line_user_id) {
     const used = await query(`SELECT 1 FROM applications WHERE line_user_id = :l LIMIT 1 FOR UPDATE`, { l: app.line_user_id }, conn);
     const linked = await query("SELECT 1 FROM line_account_links WHERE line_user_id = :l AND status = 'active' LIMIT 1 FOR UPDATE", { l: app.line_user_id }, conn);
-    if (!used.length && !linked.length) await deleteLineUser(app.line_user_id, conn);
+    const staff = await query('SELECT 1 FROM admin_users WHERE line_user_id = :l LIMIT 1', { l: app.line_user_id }, conn);
+    if (!used.length && !linked.length && !staff.length) await deleteLineUser(app.line_user_id, conn);
   }
 }
 export async function deleteLineUser(id, conn) {
   await deleteForLineUser(id, conn);
+  await notifications.deleteForLineUser(id, conn);
   for (const sql of ['DELETE FROM applicant_sessions WHERE line_user_id = :id', 'DELETE FROM line_account_links WHERE line_user_id = :id',
     "UPDATE admin_audit_logs SET metadata_json = NULL, ip_address = NULL WHERE entity_type = 'line_user' AND entity_id = CAST(:id AS CHAR)", 'DELETE FROM line_users WHERE id = :id']) await query(sql, { id }, conn);
 }
-export const deleteLogs = async (limit, conn) => (await query(`DELETE FROM admin_audit_logs WHERE ${LOG_WHERE} LIMIT 20000`, { limit }, conn)).affectedRows;
+export const deleteLogs = async (limit, conn) => (await query(`DELETE FROM admin_audit_logs WHERE ${LOG_WHERE} LIMIT 20000`, { limit }, conn)).affectedRows + await notifications.deleteOld(limit, conn);
 
 export const insertPurgeLog = (p, conn) => query(`INSERT INTO purge_log (kind, reason, ref, session_id, final_status, item_count, approved_by, created_at)
   VALUES (:kind, :reason, :ref, :sessionId, :status, :count, :adminId, UTC_TIMESTAMP())`, { ref: null, sessionId: null, status: null, count: 1, adminId: null, ...p }, conn);
