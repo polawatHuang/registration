@@ -2,7 +2,7 @@
 
 | การทดสอบ | ผล |
 |---|---|
-| Integration + security (`npm test`) บน MySQL 8.4 | 96/96 ทั้ง Node 22.23.5 และ 24.21.0 |
+| Integration + security (`npm test`) บน MySQL 8.4 | 99/99 ทั้ง Node 22.23.5 และ 24.21.0 |
 | E2E ใน browser จอ 375px: LINE Login (จำลอง) → สมัคร → เอกสารไม่ผ่าน → ส่งใหม่ → อนุมัติ → ผูก LINE | ผ่าน |
 | Responsive: 11 หน้า/มุมมอง × 5 ความกว้าง (320–1280) + คลัง AI/ตั้งค่า/ภาพรวม 4 ความกว้าง | ไม่ล้นแนวนอน |
 | ไฟล์ลับเข้าผ่านเว็บ (.env, package.json, backend, .git) | 404 ทั้งหมด |

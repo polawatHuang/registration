@@ -10,9 +10,9 @@ const https = env.APP_URL.startsWith('https://');
 export const unknownVariables = (text) => [...new Set([...text.matchAll(/\{\{\s*([^{}]*?)\s*\}\}/g)].map((m) => m[1]).filter((v) => !(v in VARIABLES)))];
 export function variablesOf(app) {
   const range = D.format(app.starts_at) === D.format(app.ends_at) ? D.format(app.starts_at) : `${D.format(app.starts_at)} – ${D.format(app.ends_at)}`;
-  return { name: app.full_name, application_no: app.application_no, course: app.course_name, university: app.university_name, session: app.session_name, date: range, time: T.format(app.starts_at), location: app.location ?? '', status: STATUS_LABELS[app.status], reason: app.status_reason ?? '' };
+  return { name: app.full_name, application_no: app.application_no, course: app.course_name, university: app.university_name, session: app.session_name, date: range, time: T.format(app.starts_at), location: app.location ?? '', status: STATUS_LABELS[app.status], reason: app.status_reason ?? '', checkin_time: app.checkin_at ? T.format(app.checkin_at) : '' };
 }
-export const SAMPLE = { full_name: 'ต้นข้าว ใจดี', application_no: 'ET69-SAMPLE23', course_name: 'หลักสูตรตัวอย่าง', university_name: 'มหาวิทยาลัยตัวอย่าง', session_name: 'รุ่นตัวอย่าง', starts_at: new Date('2027-01-15T02:00:00Z'), ends_at: new Date('2027-01-15T09:00:00Z'), location: 'ห้องประชุมตัวอย่าง', status: 'approved', status_reason: 'ตัวอย่างเหตุผล' };
+export const SAMPLE = { full_name: 'ต้นข้าว ใจดี', application_no: 'ET69-SAMPLE23', course_name: 'หลักสูตรตัวอย่าง', university_name: 'มหาวิทยาลัยตัวอย่าง', session_name: 'รุ่นตัวอย่าง', starts_at: new Date('2027-01-15T02:00:00Z'), ends_at: new Date('2027-01-15T09:00:00Z'), location: 'ห้องประชุมตัวอย่าง', status: 'approved', status_reason: 'ตัวอย่างเหตุผล', checkin_at: new Date('2027-01-15T01:45:00Z') };
 
 /** ใส่ตัวแปรครั้งเดียวในรอบเดียว: ข้อความที่ผู้สมัครกรอกมี {{...}} ก็ไม่ถูกแทนซ้ำ */
 const fill = (text, vars) => text.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (_, k) => vars[k] ?? '').replace(/[ \t]+\n/g, '\n').trim();

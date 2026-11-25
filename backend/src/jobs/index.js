@@ -3,6 +3,7 @@ import { query } from '../config/db.js';
 import { flushFiles, syncLedger } from '../services/retentionService.js';
 import { job } from '../services/notificationService.js';
 import { maintenance } from '../services/chatService.js';
+import { autoBackup } from '../services/backupService.js';
 import { processQueue } from '../services/emailService.js';
 
 /** งานตั้งเวลา: ล็อกใน DB กันรันซ้อนเมื่อมีหลายโปรเซส */
@@ -12,6 +13,7 @@ const JOBS = {
   chat: () => maintenance(),
   notifications: () => job(),
   emails: () => processQueue(30),
+  backup: () => autoBackup(),
   cleanup: async () => {
     const del = async (sql) => (await query(sql)).affectedRows;
     return {

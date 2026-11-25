@@ -71,7 +71,8 @@ async function mark({ session, applicationId, action, method, at, note, adminId 
     const row = await repo.recordOfDay(applicationId, day, conn);
     if (action === 'in') {
       if (row) return { result: 'already', who, at: row.check_in_at };
-      await repo.insertRecord({ applicationId, sessionId: session.id, day, at, adminId, method, note }, conn);
+      const recordId = await repo.insertRecord({ applicationId, sessionId: session.id, day, at, adminId, method, note }, conn);
+      await apps.insertEvent('attendance.checked_in', applicationId, { recordId }, conn);
       if (['approved', 'awaiting_training'].includes(app.status)) { await changeStatus(app, 'attended', { actorType: 'admin', actorId: adminId }, conn); who.status = 'attended'; }
     } else {
       if (!row) return { result: 'not_in', who };

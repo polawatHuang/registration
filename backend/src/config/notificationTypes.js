@@ -1,5 +1,5 @@
 /** ข้อความเริ่มต้น แก้ได้จาก Admin; status = สถานะที่ต้องยังเป็นอยู่ตอนส่ง มิฉะนั้นข้อความล้าสมัยและถูกยกเลิก */
-export const VARIABLES = { name: 'ชื่อผู้สมัคร', application_no: 'เลขที่ใบสมัคร', course: 'หลักสูตร', university: 'มหาวิทยาลัย', session: 'รุ่น', date: 'วันอบรม', time: 'เวลาเริ่ม', location: 'สถานที่', status: 'สถานะล่าสุด', reason: 'เหตุผล' };
+export const VARIABLES = { name: 'ชื่อผู้สมัคร', application_no: 'เลขที่ใบสมัคร', course: 'หลักสูตร', university: 'มหาวิทยาลัย', session: 'รุ่น', date: 'วันอบรม', time: 'เวลาเริ่ม', location: 'สถานที่', status: 'สถานะล่าสุด', reason: 'เหตุผล', checkin_time: 'เวลาเช็กอิน' };
 const track = { label: 'ดูรายละเอียด', path: '/tracking.html' };
 export const APPLICANT_TYPES = {
   linked: { title: 'เชื่อมบัญชี LINE สำเร็จ', tone: 'green', heading: 'เชื่อมบัญชีเรียบร้อย 🔗', body: 'สวัสดีคุณ{{name}} ใบสมัคร {{application_no}} เชื่อมกับ LINE นี้แล้ว จะได้รับแจ้งทุกความคืบหน้าที่นี่', button: { label: 'เปิดพื้นที่ของฉัน', path: '/me.html' } },
@@ -12,15 +12,20 @@ export const APPLICANT_TYPES = {
   cancelled: { title: 'ยกเลิกใบสมัคร', tone: 'grey', status: 'cancelled', heading: 'ใบสมัครถูกยกเลิก', body: 'คุณ{{name}} ใบสมัคร {{application_no}} ถูกยกเลิก\n{{reason}}', button: track },
   reminder_day: { title: 'เตือนก่อนวันอบรม', tone: 'purple', heading: 'ใกล้วันเก็บเกี่ยวแล้ว 🌾', body: 'คุณ{{name}} มีอบรมวันที่ {{date}} เวลา {{time}} น.\n{{location}}', button: track },
   reminder_hour: { title: 'เตือนก่อนเริ่มอบรม', tone: 'orange', heading: 'อีกไม่นานจะเริ่มอบรม ⏰', body: 'คุณ{{name}} เริ่มเวลา {{time}} น. {{location}}', button: track },
+  checked_in: { title: 'เช็กอินสำเร็จ', tone: 'green', heading: 'เช็กอินเรียบร้อย ✅', body: 'คุณ{{name}} บันทึกเวลาเข้าอบรม {{checkin_time}} น. แล้ว ขอให้สนุกกับการเรียนรู้', button: { label: 'ดูประวัติ', path: '/me.html?view=history' } },
   evaluation: { title: 'ส่งแบบประเมิน', tone: 'purple', heading: 'ขอเสียงของคุณหน่อย 💬', body: 'ขอบคุณคุณ{{name}}ที่เข้าอบรม {{session}} ช่วยประเมินเพื่อให้เราพัฒนาต่อ', button: { label: 'ทำแบบประเมิน', path: 'evaluation' } },
   passed: { title: 'ผ่านการอบรม', tone: 'green', status: 'passed', heading: 'คุณผ่านการอบรม 🏆', body: 'ยินดีด้วยคุณ{{name}} กำลังจัดทำใบประกาศนียบัตร', button: track },
   certified: { title: 'ออกใบประกาศแล้ว', tone: 'green', status: 'certified', heading: 'ดอกไม้บานแล้ว 🌸', body: 'คุณ{{name}} ใบประกาศนียบัตรของคุณพร้อมแล้ว', button: { label: 'ดูใบประกาศ', path: '/me.html?view=certificates' } },
 };
+/** มีช่องทางอื่นแล้วหรือไม่คุ้มค่าจะส่งอีเมล จึงไม่ส่งแทน LINE */
+export const LINE_ONLY = ['submitted', 'linked', 'checked_in'];
 export const STATUS_TO_TYPE = Object.fromEntries(Object.entries(APPLICANT_TYPES).filter(([, t]) => t.status).map(([k, t]) => [t.status, k]));
 /** แจ้งเจ้าหน้าที่: ส่งเฉพาะผู้ที่ยังมีสิทธิ์เกี่ยวข้อง และรวมเหตุการณ์ในช่วง window วินาทีเป็นข้อความเดียว */
 export const ADMIN_EVENTS = {
   new_applicant: { title: 'ผู้สมัครใหม่', permission: 'applicants.view', text: 'มีผู้สมัครใหม่ {{count}} คน', path: '/admin/applications.html' },
   documents_received: { title: 'ส่งเอกสารใหม่', permission: 'applicants.review', text: 'มีการส่งเอกสารแก้ไข {{count}} ใบ', path: '/admin/applications.html?status=under_review' },
+  checked_in: { title: 'มีการเช็กอิน', permission: 'attendance.manage', text: 'มีผู้เข้าอบรมเช็กอิน {{count}} คน', path: '/admin/attendance.html' },
+  backup_failed: { title: 'สำรองข้อมูลไม่สำเร็จ', permission: 'settings.manage', text: 'สำรองฐานข้อมูลไม่สำเร็จ {{count}} ครั้ง ตรวจที่หน้าตั้งค่า > ระบบ', path: '/admin/settings.html#system' },
   help_requested: { window: 60, title: 'ขอคุยกับเจ้าหน้าที่', permission: 'chat.reply', text: 'มีลูกค้าขอคุยกับเจ้าหน้าที่ {{count}} คน', path: '/admin/chat.html' },
   ai_unanswered: { title: 'AI ตอบไม่ได้', permission: 'chat.reply', text: 'AI ตอบไม่ได้ {{count}} ครั้ง', path: '/admin/chat.html' },
   send_failed: { title: 'ส่งแจ้งเตือนไม่สำเร็จ', permission: 'notifications.manage', text: 'ส่งข้อความไม่สำเร็จ {{count}} รายการ', path: '/admin/notifications.html' },

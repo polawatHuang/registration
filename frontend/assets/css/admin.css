@@ -176,3 +176,6 @@ dialog.pdfd,dialog.cert-dialog{width:100vw;max-width:none;height:100dvh;max-heig
 .qrow{display:grid;gap:10px;padding:14px;border:1.5px solid #eee8f8;border-radius:16px}.qrow b,.qrow small{display:block;overflow-wrap:anywhere}.qrow small{color:var(--muted)}.qrow>.badge{justify-self:start}
 @media (min-width:640px){.qrow{grid-template-columns:minmax(0,1fr) auto;align-items:center}.qrow>.badge{justify-self:end}}
 @media (min-width:960px){.grid2.even{grid-template-columns:1fr 1fr}}
+.ready-hero{display:flex;gap:18px;align-items:center;padding:20px;margin-bottom:16px;border-radius:26px;color:#fff;background:linear-gradient(120deg,#b8341f,#49378a)}.ready-hero.on{background:linear-gradient(120deg,#0f7a3c,#49378a)}.ready-hero .counter{width:104px;height:104px;margin:0;flex:none;background:radial-gradient(closest-side,#fff 78%,transparent 79%),conic-gradient(#8fd14b var(--p),rgba(255,255,255,.3) 0)}.ready-hero .counter b{font-size:1.6rem}.ready-hero h2{font-size:clamp(1.1rem,4.6vw,1.5rem)}
+a.ckrow{color:inherit;text-decoration:none}.ckrow>div{flex:1}.ckrow.wait>i:first-child{color:#c98a00}.ckrow>.bi-chevron-right{font-size:1rem!important;color:var(--muted)!important}
+@media (min-width:960px){.ckgrid.two{grid-template-columns:1fr 1fr}}

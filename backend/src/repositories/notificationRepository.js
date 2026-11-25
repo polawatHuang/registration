@@ -9,6 +9,7 @@ export const insertEvent = (type, aggregateType, aggregateId, conn) => query('IN
 /** LINE ของใบสมัคร: ที่ผูกกับใบ หรือที่ผูกกับบุคคลหลังตรวจตัวตนแล้วเท่านั้น */
 export const lineOfApplication = (id, conn) => queryOne(`SELECT COALESCE(a.line_user_id, k.line_user_id) AS line_user_id FROM applications a
   LEFT JOIN line_account_links k ON k.applicant_id = a.applicant_id AND k.status = 'active' WHERE a.id = :id`, { id }, conn);
+export const checkinOf = (recordId, applicationId) => queryOne('SELECT check_in_at FROM attendance_records WHERE id = :recordId AND application_id = :applicationId', { recordId, applicationId });
 export const findLineUser = (id) => queryOne('SELECT id, line_user_id, status, friend_status, campaign_opt_out FROM line_users WHERE id = :id', { id });
 export const setFriend = (id, status) => query('UPDATE line_users SET friend_status = :status WHERE id = :id', { id, status });
 export const setOptOut = (id, value, conn) => query('UPDATE line_users SET campaign_opt_out = :value WHERE id = :id', { id, value }, conn);

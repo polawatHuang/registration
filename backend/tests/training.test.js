@@ -450,3 +450,78 @@ describe('อีเมลแทน LINE', () => {
     assert.equal(mails().length, 2);
   });
 });
+
+describe('แจ้งเตือนเช็กอิน', () => {
+  const until = async (fn) => { for (let i = 0; i < 100; i += 1) { const v = await fn(); if (v) return v; await new Promise((r) => setTimeout(r, 50)); } throw new Error('timeout'); };
+  const jobs = () => new Client(s.base).post('/api/v1/internal/jobs/run', {}, { headers: { 'x-jobs-secret': process.env.JOBS_SECRET } });
+  const queued = (id) => s.query("SELECT status, error_message, expires_at FROM notification_queue WHERE application_id = :id AND notification_type = 'checked_in' ORDER BY id", { id });
+  test('แจ้งผู้เข้าอบรมเฉพาะเมื่อเปิด ครั้งเดียวต่อเช็กอิน ยกเลิกบันทึกแล้วไม่ส่ง และแจ้งเจ้าหน้าที่แบบรวม', async () => {
+    const admin = await s.adminClient();
+    const set = (o) => admin.put(`${A}/notifications/settings`, { enabled: true, daysBefore: 0, hoursBefore: 0, emailFallback: true, checkin: true, ...o });
+    const session = await s.newSession();
+    const person = async (sub) => {
+      const c = new Client(s.base); await s.lineLogin(c, sub);
+      const r = await s.apply({ sessionId: session }, c);
+      assert.equal(r.status, 201, JSON.stringify(r.body));
+      await s.query("UPDATE applications SET status = 'awaiting_training' WHERE id = :id", { id: r.body.data.id });
+      await s.query("UPDATE line_users SET friend_status = 'friend' WHERE line_user_id = :sub", { sub });
+      return { id: r.body.data.id, client: c, sub };
+    };
+    const [off, on, undone] = [await person('Uci-off'), await person('Uci-on'), await person('Uci-undo')];
+    const noLine = await ready(session, 'awaiting_training', { email: `ci${Date.now()}@example.com` });
+    const tokens = new Map();
+    for (const p of [off, on, undone, noLine]) tokens.set(p.id, await tokenOf(p));
+    await startNow(session);
+    await s.query('INSERT INTO line_users (line_user_id, friend_status) VALUES (:u, :f)', { u: 'Uci-staff', f: 'friend' });
+    await s.query("UPDATE admin_users SET line_user_id = (SELECT id FROM line_users WHERE line_user_id = 'Uci-staff') WHERE id = :id", { id: admin.admin.id });
+    assert.equal((await admin.put(`${A}/notifications/recipients/${admin.admin.id}`, { events: ['checked_in'] })).status, 200);
+    const pushes = (u) => s.line.chat.sent.filter((m) => m.to === u && JSON.stringify(m).includes('เช็กอินเรียบร้อย'));
+    await set({ checkin: false });
+    await jobs();
+    await scan(admin, session, tokens.get(off.id)); await jobs();
+    assert.equal((await queued(off.id)).length, 0);
+    await set({});
+    await scan(admin, session, tokens.get(on.id)); await scan(admin, session, tokens.get(on.id)); await scan(admin, session, tokens.get(on.id), 'out');
+    await jobs();
+    await until(() => pushes('Uci-on').length === 1);
+    await until(async () => (await queued(on.id))[0]?.status === 'sent');
+    assert.equal((await queued(on.id)).length, 1);
+    assert.match(JSON.stringify(pushes('Uci-on')[0]), /เวลาเข้าอบรม \d{1,2}[:.]\d{2}/);
+    // LINE ล่มชั่วคราว → ยกเลิกบันทึก → ไม่ส่ง
+    s.line.chat.status.push.push(500);
+    await scan(admin, session, tokens.get(undone.id)); await jobs();
+    await until(async () => (await queued(undone.id))[0]?.status === 'pending' && (await queued(undone.id))[0].error_message);
+    const { records } = (await admin.get(`${A}/attendance/sessions/${session}/people/${undone.id}`)).body.data;
+    await admin.post(`${A}/attendance/records/${records[0].id}/undo`, { what: 'in', reason: 'สแกนผิดคน' });
+    await s.query("UPDATE notification_queue SET next_attempt_at = UTC_TIMESTAMP() WHERE application_id = :id AND notification_type = 'checked_in'", { id: undone.id });
+    await jobs();
+    await until(async () => (await queued(undone.id))[0].status === 'cancelled');
+    assert.equal(pushes('Uci-undo').length, 0);
+    // ไม่มี LINE: ไม่ส่งอีเมลแทนสำหรับเช็กอิน
+    const before = s.smtp.mails.filter((m) => m.to === noLine.fields.email).length;
+    await scan(admin, session, tokens.get(noLine.id)); await jobs();
+    assert.equal(s.smtp.mails.filter((m) => m.to === noLine.fields.email).length, before);
+    const [a] = await s.query("SELECT SUM(item_count) n, COUNT(*) c FROM notification_queue WHERE admin_id = :id AND notification_type = 'admin_checked_in'", { id: admin.admin.id });
+    assert.equal(Number(a.n), 4, 'นับทุกเช็กอิน ไม่นับสแกนซ้ำและเช็กเอาต์');
+    assert.ok(a.c <= 2, 'รวมเป็นข้อความเดียวต่อช่วงเวลา');
+    await set({ checkin: false, emailFallback: false });
+  });
+});
+
+describe('หน้าตรวจความพร้อม', () => {
+  test('บอกสิ่งที่ขาดตามจริง ไม่มีค่าลับ และเห็นเฉพาะผู้มีสิทธิ์', async () => {
+    const admin = await s.adminClient('admin');
+    let r = (await admin.get(`${A}/system`)).body.data;
+    const of = (k) => r.items.find((i) => i.key === k);
+    assert.equal(r.ready, false);
+    assert.deepEqual([of('https').ok, of('legal').ok, of('universities').ok, of('migrations').ok, of('storage').ok, of('jobs').ok], [false, false, true, true, true, true]);
+    assert.equal(of('payment').ok, false);
+    await admin.put(`${A}/settings`, { payment_instructions: 'โอนที่เคาน์เตอร์', contact_phone: '021234567' });
+    r = (await admin.get(`${A}/system`)).body.data;
+    assert.equal(of('payment').ok && of('contact').ok, true);
+    const text = JSON.stringify(r);
+    for (const k of ['LINE_CHANNEL_SECRET', 'LINE_LOGIN_CHANNEL_SECRET', 'LINE_CHANNEL_ACCESS_TOKEN', 'JOBS_SECRET', 'DATA_ENCRYPTION_KEY']) assert.ok(!text.includes(process.env[k]), k);
+    assert.equal((await (await s.adminClient('training_staff')).get(`${A}/system`)).status, 403);
+    assert.equal((await admin.post(`${A}/system/backup`)).status, 403, 'สำรองเองเฉพาะ Super Admin');
+  });
+});

@@ -28,6 +28,7 @@ describe('สำรองและกู้คืน', () => {
     const raw = await fs.readFile(path.join(dir(), name));
     for (const bad of [r.fields.email, r.fields.mobile, 'CREATE TABLE']) assert.ok(!raw.includes(bad), bad);
     assert.equal((await fs.stat(path.join(dir(), name))).mode & 0o777, 0o600);
+    await s.query("DELETE FROM system_settings WHERE setting_key = 'backup_last_json'"); // ผลสำรองบันทึกหลัง snapshot จึงไม่อยู่ในไฟล์
     await s.query('CREATE DATABASE lst_restore');
     const target = { DB_NAME: 'lst_restore' };
     const done = await run('restore.js', [name], target);
@@ -60,6 +61,30 @@ describe('สำรองและกู้คืน', () => {
     for (let i = 0; i < 3; i += 1) assert.equal((await run('backup.js', [], { BACKUP_KEEP: '2' })).code, 0);
     assert.equal((await fs.readdir(dir())).length, 2);
   });
+  test('อัตโนมัติ: วันละครั้งหลังเวลาที่กำหนด ล้มแล้วรอ 1 ชม. แจ้งเจ้าหน้าที่ และรันซ้อนไม่ได้', async () => {
+    const { runBackup, lastBackup } = await import('../src/services/backupService.js');
+    const child = (code, env = {}) => new Promise((resolve) => { const c = spawn(process.execPath, ['--input-type=module', '-e', `const { autoBackup, lastBackup } = await import('./backend/src/services/backupService.js'); const { pool } = await import('./backend/src/config/db.js'); let r; try { r = await (${code}); } catch (e) { r = { error: e.code ?? e.message }; } console.log('RESULT ' + JSON.stringify(r)); await pool.end();`], { cwd: ROOT, env: { ...process.env, BACKUP_AUTO: '1', BACKUP_HOUR: '2', ...env } }); let o = ''; for (const x of [c.stdout, c.stderr]) x.on('data', (d) => { o += d; }); c.on('close', () => resolve(JSON.parse(o.match(/RESULT (.*)/)?.[1] ?? JSON.stringify({ crash: o })))); });
+    await s.query("DELETE FROM system_settings WHERE setting_key = 'backup_last_json'");
+    const today = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+    const at = (h, plus = 0) => `new Date(${new Date(`${today}T${h}:30:00+07:00`).getTime() + plus})`;
+    assert.deepEqual(await child(`autoBackup(${at('01')})`), { skipped: 'ยังไม่ถึงเวลา' });
+    assert.ok((await child(`autoBackup(${at('03')})`)).rows > 0);
+    assert.deepEqual(await child(`autoBackup(${at('04')})`), { skipped: 'สำรองแล้ววันนี้' });
+    assert.ok((await child(`autoBackup(${at('03', 86_400_000)})`)).rows > 0, 'วันถัดไปสำรองใหม่');
+    assert.deepEqual(await child('autoBackup()', { BACKUP_AUTO: '0' }), { skipped: 'ปิดการสำรองอัตโนมัติ' });
+    // โฟลเดอร์ใช้ไม่ได้: ล้มเหลว บันทึกสาเหตุ แจ้งเจ้าหน้าที่ครั้งเดียว และไม่วนถี่
+    await s.query("DELETE FROM system_settings WHERE setting_key = 'backup_last_json'");
+    const broken = path.join(s.storage, 'broken'); await fs.writeFile(broken, 'x');
+    const now = 'new Date(Date.now() + 1000)';
+    assert.ok((await child(`autoBackup(${now})`, { STORAGE_PATH: broken, BACKUP_HOUR: '0' })).error);
+    assert.equal((await lastBackup()).ok, false);
+    assert.deepEqual(await child(`autoBackup(${now})`, { STORAGE_PATH: broken, BACKUP_HOUR: '0' }), { skipped: 'รอลองใหม่' });
+    assert.equal((await s.query("SELECT COUNT(*) n FROM domain_events WHERE event_type = 'system.backup_failed'"))[0].n, 1);
+    const both = await Promise.allSettled([runBackup(), runBackup()]);
+    assert.ok(both.some((x) => x.status === 'fulfilled'));
+    for (const x of both) if (x.status === 'rejected') assert.equal(x.reason.code, 'BACKUP_RUNNING');
+    assert.equal((await lastBackup()).ok, true);
+  });
   test('สร้าง Super Admin จากตัวแปรใน .env ได้โดยไม่ต้องใช้ SSH', async () => {
     const r = await run('create-admin.js', [], { ADMIN_USERNAME: 'fromenv', ADMIN_NAME: 'ผู้ดูแล', ADMIN_PASSWORD: 'x'.repeat(16) });
     assert.equal(r.code, 0, r.out);
@@ -72,8 +97,8 @@ describe('สำรองและกู้คืน', () => {
     const keep = setInterval(() => {}, 50); // timer ของตัวตั้งเวลาไม่ค้ำโปรเซส
     const stop = startScheduler({ every: 60_000, first: 10 });
     let n = 0;
-    for (let i = 0; i < 60 && n < 5; i += 1) { await new Promise((x) => setTimeout(x, 50)); [{ n }] = await s.query('SELECT COUNT(*) n FROM job_locks WHERE last_finished_at IS NOT NULL'); }
+    for (let i = 0; i < 60 && n < 6; i += 1) { await new Promise((x) => setTimeout(x, 50)); [{ n }] = await s.query('SELECT COUNT(*) n FROM job_locks WHERE last_finished_at IS NOT NULL'); }
     stop(); clearInterval(keep);
-    assert.equal(n, 5);
+    assert.equal(n, 6);
   });
 });

@@ -72,4 +72,6 @@
 ## หลักสูตร (`/admin/catalog/courses`) `POST`, `PUT|DELETE /:id`
 
 ## งานตั้งเวลา
+`GET /admin/system` ความพร้อมและสถานะสำรอง (settings.manage) · `POST /admin/system/backup` สำรองทันที (integrations.manage)
+
 `POST /internal/jobs/run` พร้อม header `X-Jobs-Secret` · 200 เมื่อทุกงานสำเร็จ · 500 `JOBS_FAILED` พร้อมชื่องานและรหัสสาเหตุเมื่อมีงานล้ม (งานอื่นยังทำต่อ) · 403 secret ไม่ตรง

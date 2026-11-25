@@ -103,6 +103,8 @@ admin.delete('/catalog/universities/:id', can('catalog.manage'), adm.deleteUnive
 admin.delete('/catalog/options/:id', can('catalog.manage'), adm.deleteOption);
 admin.delete('/catalog/sessions/:id', can('catalog.manage'), adm.deleteSession);
 admin.get('/settings', can('settings.manage'), adm.getSiteSettings);
+admin.get('/system', can('settings.manage'), adm.system);
+admin.post('/system/backup', authLimiter, can('integrations.manage'), adm.backupNow);
 admin.use('/retention', can('retention.manage'));
 admin.get('/retention/summary', adm.retentionSummary);
 admin.get('/retention/due/:kind', adm.retentionDue);

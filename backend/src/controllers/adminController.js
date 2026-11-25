@@ -6,6 +6,8 @@ import * as email from '../services/emailService.js';
 import * as integrations from '../services/integrationService.js';
 import * as legal from '../services/legalService.js';
 import { kick as notify } from '../services/notificationService.js';
+import { readiness } from '../services/readinessService.js';
+import { runBackup } from '../services/backupService.js';
 import * as retention from '../services/retentionService.js';
 import * as catalog from '../services/catalogService.js';
 import * as adminRepo from '../repositories/adminRepository.js';
@@ -88,6 +90,8 @@ export const deleteOption = (req, res) => saved(res, catalog.deleteOption(idOf(r
 export const deleteSession = (req, res) => saved(res, catalog.deleteSession(idOf(req), actor(req)));
 export const saveSettings = (req, res) => saved(res, catalog.saveSettings(parse(s.settingsSchema, req.body), actor(req)));
 
+export const system = async (_req, res) => ok(res, await readiness());
+export const backupNow = async (req, res) => { const b = await runBackup(actor(req)); ok(res, { name: b.name, bytes: b.bytes, rows: b.rows }, { message: 'สำรองแล้ว' }); };
 export const getSiteSettings = async (_req, res) => ok(res, await catalog.siteSettings());
 export const getLegalSettings = async (_req, res) => ok(res, await legal.getLegal());
 export const saveLegalSettings = async (req, res) => ok(res, await legal.saveLegal(parse(s.legalSchema, req.body), actor(req)), { message: 'บันทึกแล้ว' });

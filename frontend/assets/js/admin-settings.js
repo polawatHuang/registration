@@ -16,7 +16,22 @@ const LEGAL = [['controller_name', 'ชื่อผู้ควบคุมข�
   ['refund_policy', 'นโยบายค่าลงทะเบียน การยกเลิก เลื่อนรุ่น และคืนเงิน', 'textarea'], ['copyright_owner', 'เจ้าของลิขสิทธิ์เว็บไซต์'], ['effective_date', 'วันที่มีผลบังคับ', 'date']];
 const BASIS = { contract: 'สัญญา (ม.24(3))', public_task: 'ประโยชน์สาธารณะ (ม.24(4))' };
 const SOURCE = { admin: 'ตั้งจากหน้านี้', env: 'จากไฟล์ .env', unreadable: 'ถอดรหัสไม่ได้ กรุณาใส่ใหม่' };
-let tab = location.hash === '#legal' ? 'legal' : can('integrations.manage') ? 'api' : 'site';
+const asked = location.hash.slice(1);
+let tab = ['system', 'site', 'legal', ...(can('integrations.manage') ? ['api'] : [])].includes(asked) ? asked : can('integrations.manage') ? 'api' : 'system';
+const size = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.ceil(b / 1024)} KB`);
+const JOB = { purgeFiles: 'ลบไฟล์ค้าง', chat: 'แชต', notifications: 'แจ้งเตือน', emails: 'อีเมล', backup: 'สำรองข้อมูล', cleanup: 'ล้าง session' };
+function systemView(d) {
+  const pct = Math.round((d.required.ok / d.required.total) * 100);
+  const row = (i) => h(i.href && !i.ok ? 'a' : 'div', { class: `ckrow ${i.ok ? 'ok' : i.level === 'required' ? 'bad' : 'wait'}`, href: i.href && !i.ok ? i.href : null }, icon(i.ok ? 'check-circle-fill' : i.level === 'required' ? 'x-circle-fill' : 'dash-circle-fill'), h('div', {}, h('b', {}, i.label), h('small', {}, i.hint)), i.href && !i.ok && icon('chevron-right'));
+  const group = (level) => d.items.filter((i) => i.level === level).sort((a, b) => a.ok - b.ok).map(row);
+  const b = d.backup;
+  return [h('section', { class: `ready-hero ${d.ready ? 'on' : ''}` }, h('div', { class: 'counter', style: { '--p': `${pct}%` } }, h('b', {}, `${pct}%`), h('small', {}, 'พร้อม')), h('div', {}, h('h2', {}, d.ready ? 'พร้อมเปิดรับสมัคร' : `เหลืออีก ${num(d.required.total - d.required.ok)} รายการก่อนเปิดรับสมัคร`), h('p', {}, `จำเป็น ${num(d.required.ok)}/${num(d.required.total)} · แนะนำ ${num(d.recommended.ok)}/${num(d.recommended.total)}`))),
+    h('section', { class: 'box' }, h('h2', {}, 'ต้องมีก่อนเปิดรับสมัคร'), h('div', { class: 'ckgrid two' }, group('required'))), h('section', { class: 'box' }, h('h2', {}, 'แนะนำ เปิดทีหลังได้'), h('div', { class: 'ckgrid two' }, group('recommended'))),
+    h('section', { class: 'box' }, h('h2', {}, 'สำรองฐานข้อมูล'), h('dl', { class: 'kv' }, h('div', {}, h('dt', {}, 'อัตโนมัติ'), h('dd', {}, b.auto ? `ทุกวันหลัง ${String(b.hour).padStart(2, '0')}:00 น.` : 'ปิด')), h('div', {}, h('dt', {}, 'สำเร็จล่าสุด'), h('dd', {}, b.last?.okAt ? `${fmtDateTime(b.last.okAt)} · ${num(b.last.rows)} แถว · ${size(b.last.bytes)}` : '— ยังไม่มี —')), h('div', {}, h('dt', {}, 'ไฟล์ที่เก็บไว้'), h('dd', {}, `${num(b.files)} จาก ${num(b.keep)} · รวม ${size(b.bytes)}`)), h('div', {}, h('dt', {}, 'ครั้งล่าสุด'), h('dd', {}, b.last ? (b.last.ok ? 'สำเร็จ' : `ล้มเหลว (${b.last.error}) ${fmtDateTime(b.last.at)}`) : '—'))),
+      h('p', { class: 'notice-sm', style: { 'margin-top': '14px' } }, icon('shield-lock-fill'), 'ไฟล์เข้ารหัสอยู่ในเครื่องเดียวกับเว็บ ต้องดาวน์โหลดไฟล์ใน storage และกุญแจใน .env ไปเก็บคนละที่ด้วย'),
+      can('integrations.manage') && h('div', { class: 'bar-actions', style: { margin: '14px 0 0' } }, h('button', { class: 'btn btn-green', type: 'button', onclick: (e) => busy(e.currentTarget, async () => { try { const r = await send('POST', '/admin/system/backup'); toast(`สำรองแล้ว ${num(r.rows)} แถว`); load(); } catch (x) { toast(x.message, 'error'); } }) }, icon('database-fill-down'), 'สำรองตอนนี้'))),
+    h('section', { class: 'box' }, h('h2', {}, 'งานตั้งเวลา'), h('dl', { class: 'kv' }, d.jobs.map((j) => h('div', {}, h('dt', {}, JOB[j.name] ?? j.name), h('dd', {}, j.at ? fmtDateTime(j.at) : 'ยังไม่เคยเสร็จ')))), h('small', { class: 'muted' }, `Node ${d.node} · ฐานข้อมูล ${d.database}`))];
+}
 
 const copyRow = (label, url) => h('div', { class: 'copy' }, h('div', {}, h('small', { class: 'muted' }, label), h('code', {}, url)), h('button', { class: 'icon-btn', type: 'button', 'aria-label': `คัดลอก ${label}`, onclick: async () => { try { await navigator.clipboard.writeText(url); toast('คัดลอกแล้ว'); } catch { toast('คัดลอกไม่สำเร็จ', 'error'); } } }, icon('copy')));
 
@@ -60,6 +75,8 @@ async function load() {
     if (tab === 'api') {
       const d = await get('/admin/integrations');
       body.push(h('div', { class: 'grid3' }, Object.keys(GROUPS).map((k) => card(k, d, load))), h('p', { class: 'muted' }, icon('shield-lock-fill'), ' key ถูกเข้ารหัสก่อนบันทึก หน้านี้แสดงเพียง 4 ตัวท้าย และทุกการแก้ไขถูกบันทึกใน Audit Logs'));
+    } else if (tab === 'system') {
+      body.push(...systemView(await get('/admin/system')));
     } else if (tab === 'legal') {
       const d = await get('/admin/legal');
       const v = d.fields;
@@ -72,8 +89,9 @@ async function load() {
       body.push(h('section', { class: 'box' }, h('dl', { class: 'kv' }, SITE.map(([k, l]) => h('div', { class: 'wide' }, h('dt', {}, l), h('dd', { style: { 'white-space': 'pre-line' } }, v[k] || '— ยังไม่ระบุ —')))),
         h('div', { class: 'bar-actions', style: { margin: '16px 0 0' } }, h('button', { class: 'btn btn-green', type: 'button', onclick: () => formDialog({ title: 'ตั้งค่าเว็บไซต์', values: v, fields: SITE.map(([name, label, type]) => ({ name, label, type, wide: true })), onSave: async (x) => { await send('PUT', '/admin/settings', x); toast('บันทึกแล้ว'); load(); } }) }, icon('pencil-fill'), 'แก้ไข'))));
     }
-    const tabs = [...(can('integrations.manage') ? [['api', 'API key']] : []), ['site', 'เว็บไซต์'], ['legal', 'กฎหมาย/PDPA']];
-    main.replaceChildren(h('div', { class: 'tabs', role: 'tablist' }, tabs.map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === tab), onclick: () => { tab = k; load(); } }, l))), ...body);
+    const tabs = [['system', 'ระบบ'], ...(can('integrations.manage') ? [['api', 'API key']] : []), ['site', 'เว็บไซต์'], ['legal', 'กฎหมาย/PDPA']];
+    main.replaceChildren(h('div', { class: 'tabs', role: 'tablist' }, tabs.map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === tab), onclick: () => { tab = k; history.replaceState(null, '', `#${k}`); load(); } }, l))), ...body);
   } catch (e) { main.replaceChildren(failed(e, load)); }
 }
 load();
+addEventListener('hashchange', () => { const t = location.hash.slice(1); if (['system', 'site', 'legal', ...(can('integrations.manage') ? ['api'] : [])].includes(t) && t !== tab) { tab = t; load(); } });

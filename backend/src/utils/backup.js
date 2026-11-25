@@ -29,6 +29,9 @@ export async function backup() {
   const tmp = path.join(BACKUP_DIR, `${name}.part`);
   const conn = await pool.getConnection();
   const counts = {};
+  const lock = `lst_backup_${crypto.createHash('sha256').update(env.DB_NAME).digest('hex').slice(0, 32)}`;
+  const [[{ ok }]] = await conn.query('SELECT GET_LOCK(?, 0) AS ok', [lock]);
+  if (Number(ok) !== 1) { conn.release(); throw Object.assign(new Error('กำลังสำรองอยู่แล้ว'), { code: 'BACKUP_RUNNING' }); }
   try {
     await conn.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
     await conn.query('START TRANSACTION WITH CONSISTENT SNAPSHOT'); // ทุกตารางเห็นข้อมูลเวลาเดียวกัน
@@ -70,7 +73,7 @@ export async function backup() {
     await conn.query('ROLLBACK').catch(() => {});
     await fsp.rm(tmp, { force: true });
     throw err;
-  } finally { conn.release(); }
+  } finally { await conn.query('SELECT RELEASE_LOCK(?)', [lock]).catch(() => {}); conn.release(); }
   const file = path.join(BACKUP_DIR, name);
   return { file, name, bytes: (await fsp.stat(file)).size, tables: Object.keys(counts).length, rows: Object.values(counts).reduce((a, b) => a + b, 0), counts };
 }
@@ -123,5 +126,7 @@ export async function prune(keep) {
   const all = await listBackups();
   const old = all.slice(0, Math.max(0, all.length - keep));
   for (const o of old) await fsp.rm(path.join(BACKUP_DIR, o.name), { force: true });
+  // ไฟล์ค้างจากโปรเซสที่ถูกปิดกลางทาง
+  for (const n of await fsp.readdir(BACKUP_DIR).catch(() => [])) if (n.endsWith('.lstb.part') && Date.now() - (await fsp.stat(path.join(BACKUP_DIR, n))).mtimeMs > 86_400_000) await fsp.rm(path.join(BACKUP_DIR, n), { force: true });
   return old.length;
 }

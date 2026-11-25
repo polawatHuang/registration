@@ -119,7 +119,7 @@ export async function startStack() {
   await new Promise((r) => probe.close(r));
   Object.assign(process.env, {
     NODE_ENV: 'test', PORT: String(port), APP_URL: `http://127.0.0.1:${port}`, TRUST_PROXY: '0', DB_HOST: '127.0.0.1', DB_PORT: String(db.port), DB_NAME: db.dbName, DB_USER: db.username, DB_PASSWORD: '',
-    DATA_ENCRYPTION_KEY: crypto.randomBytes(32).toString('base64'), DATA_HASH_KEY: crypto.randomBytes(32).toString('base64'), JOBS_SECRET: crypto.randomBytes(24).toString('hex'),
+    DATA_ENCRYPTION_KEY: crypto.randomBytes(32).toString('base64'), DATA_HASH_KEY: crypto.randomBytes(32).toString('base64'), JOBS_SECRET: crypto.randomBytes(24).toString('hex'), BACKUP_AUTO: '0',
     STORAGE_PATH: storage, MAX_UPLOAD_MB: '1', LINE_LOGIN_CHANNEL_ID: '1234567890', LINE_LOGIN_CHANNEL_SECRET: crypto.randomBytes(16).toString('hex'), LINE_API_URL: line.url, LINE_DATA_URL: line.url, LINE_CHANNEL_SECRET: crypto.randomBytes(16).toString('hex'), LINE_CHANNEL_ACCESS_TOKEN: 'test-channel-access-token', MINIMAX_TEST_URL: line.url, SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtp.port), SMTP_FROM_EMAIL: 'noreply@example.com', SMTP_ALLOW_INSECURE: '1', LOG_LEVEL: 'silent',
   });
   const { pool, query } = await import('../src/config/db.js');
