@@ -39,6 +39,7 @@ const schema = z.object({
   MINIMAX_BASE_URL: opt,
   MINIMAX_MODEL: opt,
   MINIMAX_TEST_URL: opt,
+  FX_TEST_URL: opt,
   SMTP_HOST: opt,
   SMTP_PORT: opt,
   SMTP_USER: opt,
@@ -62,7 +63,7 @@ const e = parsed.data;
 if (e.DATA_ENCRYPTION_KEY === e.DATA_HASH_KEY) throw new Error('DATA_ENCRYPTION_KEY และ DATA_HASH_KEY ต้องไม่ซ้ำกัน');
 if (e.NODE_ENV === 'production') {
   if (!e.APP_URL.startsWith('https://')) throw new Error('production ต้องใช้ APP_URL แบบ https');
-  if (process.env.LINE_AUTHORIZE_URL || process.env.LINE_API_URL || process.env.LINE_DATA_URL || process.env.MINIMAX_TEST_URL || process.env.SMTP_ALLOW_INSECURE) throw new Error('ห้ามใช้ค่าทดสอบ (LINE_*_URL, MINIMAX_TEST_URL, SMTP_ALLOW_INSECURE) ใน production');
+  if (process.env.LINE_AUTHORIZE_URL || process.env.LINE_API_URL || process.env.LINE_DATA_URL || process.env.MINIMAX_TEST_URL || process.env.FX_TEST_URL || process.env.SMTP_ALLOW_INSECURE) throw new Error('ห้ามใช้ค่าทดสอบ (LINE_*_URL, MINIMAX_TEST_URL, FX_TEST_URL, SMTP_ALLOW_INSECURE) ใน production');
 }
 
 const storagePath = path.resolve(ROOT, e.STORAGE_PATH);

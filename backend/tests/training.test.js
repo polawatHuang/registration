@@ -703,21 +703,45 @@ describe('เครดิต AI', () => {
     assert.ok(Math.abs(c.entries[0].estimate - 100) < 1e-6, 'เก็บยอดที่ระบบประมาณไว้เทียบกับยอดจริง');
   });
 
-  test('ค่าเงินบาท: อัตราจากการเติมจริง, ตั้งเองได้, สรุปค่าใช้จ่ายรายเดือน และแถบหน้าแชตแสดงเครดิต AI', async () => {
+  test('ค่าเงินบาท: อัตโนมัติจากแหล่งอัตรา, ล้มเหลวใช้ค่าเดิม, กำหนดเองได้, สรุปค่าใช้จ่าย และแถบหน้าแชต', async () => {
     const get = async () => (await admin.get('/api/v1/ai/credit')).body.data;
     const opts = (o) => admin.put('/api/v1/ai/credit/options', { lowPct: 20, email: '', ...o });
-    assert.equal((await opts({ fxRate: 0 })).status, 400);
-    assert.equal((await opts({ fxRate: '' })).status, 200);
-    assert.equal((await get()).fx.rate, null);
+    // อัตโนมัติ (ค่าเริ่มต้น): ยังไม่มีอัตราก็ดึงให้ทันที
+    await s.query("DELETE FROM system_settings WHERE setting_key IN ('ai_fx_rate', 'ai_fx_mode', 'ai_fx_at', 'ai_fx_source')");
+    s.line.fx.rate = 34.13;
+    let c = await get();
+    assert.deepEqual([c.fx.rate, c.fx.mode, c.fx.source], [34.13, 'auto', 'test']);
+    // ยังไม่ครบ 12 ชั่วโมงไม่ถามซ้ำ / ครบแล้วงานตั้งเวลาอัปเดตให้ / แหล่งล่มใช้ค่าเดิม
+    const hits = s.line.fx.hits; s.line.fx.rate = 33;
+    await get(); await jobs();
+    assert.equal(s.line.fx.hits, hits);
+    await s.query("UPDATE system_settings SET setting_value = '2000-01-01T00:00:00Z' WHERE setting_key = 'ai_fx_at'");
+    await jobs();
+    assert.equal((await get()).fx.rate, 33);
+    s.line.fx.fail = true;
+    await s.query("UPDATE system_settings SET setting_value = '2000-01-01T00:00:00Z' WHERE setting_key = 'ai_fx_at'");
+    await jobs();
+    assert.equal((await get()).fx.rate, 33, 'ดึงไม่ได้ใช้อัตราเดิมต่อ');
+    s.line.fx.fail = false;
+    s.line.fx.rate = 1000;
+    assert.equal((await opts({ fxMode: 'auto' })).body.data.fx.rate, 33, 'ค่าผิดปกติไม่ถูกใช้');
+    s.line.fx.rate = 34.13;
+    // โหมดอัตโนมัติ: เงินบาทที่จ่ายตอนเติมไม่ทับอัตรา
     const before = (await get()).spending.topups;
-    let c = (await admin.post('/api/v1/ai/credit', { kind: 'topup', amount: 10, paidThb: 345.6 })).body.data;
-    assert.equal(c.fx.rate, 34.56, 'อัตรา = บาทที่จ่าย / ดอลลาร์ที่เติม');
+    c = (await admin.post('/api/v1/ai/credit', { kind: 'topup', amount: 10, paidThb: 345.6 })).body.data;
     assert.equal(c.entries[0].paid_thb, 345.6);
     assert.ok(Math.abs(c.spending.topups.usd - before.usd - 10) < 1e-6);
     assert.equal(c.spending.months.length, 6);
-    assert.ok(c.spending.months[0].topupUsd >= 10);
-    assert.equal((await opts({ fxRate: 35 })).body.data.fx.rate, 35);
+    assert.notEqual(c.fx.rate, 34.56);
+    // กำหนดเอง: ตั้งตัวเลขได้ และการเติมพร้อมเงินบาทอัปเดตอัตราจริง
+    assert.equal((await opts({ fxMode: 'manual', fxRate: 0 })).status, 400);
+    assert.equal((await opts({ fxMode: 'manual', fxRate: 35 })).body.data.fx.rate, 35);
     assert.equal((await opts({})).body.data.fx.rate, 35, 'ไม่ส่งอัตรามา = คงค่าเดิม');
+    s.line.fx.rate = 30; await s.query("UPDATE system_settings SET setting_value = '2000-01-01T00:00:00Z' WHERE setting_key = 'ai_fx_at'"); await jobs();
+    assert.equal((await get()).fx.rate, 35, 'กำหนดเองแล้วไม่ถูกเขียนทับ');
+    c = (await admin.post('/api/v1/ai/credit', { kind: 'topup', amount: 10, paidThb: 345.6 })).body.data;
+    assert.equal(c.fx.rate, 34.56, 'อัตรา = บาทที่จ่าย / ดอลลาร์ที่เติม');
+    assert.equal((await opts({ fxMode: 'manual', fxRate: 35 })).status, 200);
     assert.equal((await admin.post('/api/v1/ai/credit', { kind: 'balance', amount: 5, paidThb: 999 })).status, 200);
     assert.equal((await get()).entries[0].paid_thb, null, 'ยอดคงเหลือไม่มีเงินที่จ่าย');
     assert.equal((await admin.get('/api/v1/ai/report')).body.data.fx.rate, 35);
@@ -725,6 +749,8 @@ describe('เครดิต AI', () => {
     const chat = (await admin.get(`${A}/chat/state`)).body.data;
     assert.equal(chat.aiCredit.rate, 35);
     assert.ok(chat.aiCredit.remaining <= 5);
+    s.line.fx.rate = 34.5;
+    assert.equal((await opts({ fxMode: 'auto' })).body.data.fx.rate, 34.5, 'กลับเป็นอัตโนมัติแล้วดึงทันที');
   });
 });
 

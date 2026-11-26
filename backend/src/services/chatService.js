@@ -18,7 +18,7 @@ import { track } from '../utils/background.js';
 import { credit } from './aiCreditService.js';
 
 /** ยอดเครดิต AI โดยย่อสำหรับแถบหน้าแชต อ่านไม่ได้ก็ไม่ขวางหน้า */
-const creditBrief = async () => { try { const c = await credit({ withSpending: false }); return { remaining: c.remaining, currency: c.currency, level: c.level, rate: c.fx.rate }; } catch { return null; } };
+const creditBrief = async () => { try { const c = await credit({ withSpending: false, waitFx: false }); return { remaining: c.remaining, currency: c.currency, level: c.level, rate: c.fx.rate }; } catch { return null; } };
 import { readDocument, storeDocument } from './storageService.js';
 import { flushFiles } from './retentionService.js';
 import { env } from '../config/env.js';

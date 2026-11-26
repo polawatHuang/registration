@@ -41,7 +41,7 @@ async function startSmtpMock() {
 async function startLineMock() {
   const codes = new Map();
   const tokens = new Map();
-  const mock = { overrides: {}, codes, tokens, rich: { menus: new Map(), default: null, status: {} }, aiReply: null, aiRequests: [], aiDelay: null, chat: { sent: [], keys: new Set(), status: { reply: [], push: [] }, quota: { type: 'limited', value: 1000 }, used: 0, loading: 0, strangers: new Set(), content: PNG } };
+  const mock = { fx: { rate: 34.5, fail: false, hits: 0 }, overrides: {}, codes, tokens, rich: { menus: new Map(), default: null, status: {} }, aiReply: null, aiRequests: [], aiDelay: null, chat: { sent: [], keys: new Set(), status: { reply: [], push: [] }, quota: { type: 'limited', value: 1000 }, used: 0, loading: 0, strangers: new Set(), content: PNG } };
   const server = http.createServer(async (req, res) => {
     let body = '';
     for await (const c of req) body += c;
@@ -66,6 +66,7 @@ async function startLineMock() {
     }
     if (req.url.startsWith('/v2/bot/profile/') && mock.chat.strangers.has(req.url.split('/').pop())) return json(404, {});
     if (req.url.startsWith('/v2/bot/profile/')) return json(200, { displayName: `คุณ ${req.url.split('/').pop().slice(0, 12)}`, pictureUrl: 'https://profile.line-scdn.net/x' });
+    if (req.url === '/fx') { mock.fx.hits += 1; return mock.fx.fail ? json(503, {}) : json(200, { amount: 1, base: 'USD', date: '2026-11-25', rates: { THB: mock.fx.rate } }); }
     if (req.url === '/v2/bot/chat/loading/start') { mock.chat.loading += 1; return json(202, {}); }
     if (req.url.startsWith('/v2/bot/message/quota') && mock.hangQuota) return setTimeout(() => res.destroy(), 6000);
     if (req.url === '/v2/bot/message/quota') return json(200, mock.chat.quota);
@@ -123,7 +124,7 @@ export async function startStack() {
   Object.assign(process.env, {
     NODE_ENV: 'test', PORT: String(port), APP_URL: `http://127.0.0.1:${port}`, TRUST_PROXY: '0', DB_HOST: '127.0.0.1', DB_PORT: String(db.port), DB_NAME: db.dbName, DB_USER: db.username, DB_PASSWORD: '',
     DATA_ENCRYPTION_KEY: crypto.randomBytes(32).toString('base64'), DATA_HASH_KEY: crypto.randomBytes(32).toString('base64'), JOBS_SECRET: crypto.randomBytes(24).toString('hex'), BACKUP_AUTO: '0',
-    STORAGE_PATH: storage, MAX_UPLOAD_MB: '1', LINE_LOGIN_CHANNEL_ID: '1234567890', LINE_LOGIN_CHANNEL_SECRET: crypto.randomBytes(16).toString('hex'), LINE_API_URL: line.url, LINE_DATA_URL: line.url, LINE_CHANNEL_SECRET: crypto.randomBytes(16).toString('hex'), LINE_CHANNEL_ACCESS_TOKEN: 'test-channel-access-token', MINIMAX_TEST_URL: line.url, SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtp.port), SMTP_FROM_EMAIL: 'noreply@example.com', SMTP_ALLOW_INSECURE: '1', LOG_LEVEL: 'silent',
+    STORAGE_PATH: storage, MAX_UPLOAD_MB: '1', LINE_LOGIN_CHANNEL_ID: '1234567890', LINE_LOGIN_CHANNEL_SECRET: crypto.randomBytes(16).toString('hex'), LINE_API_URL: line.url, LINE_DATA_URL: line.url, LINE_CHANNEL_SECRET: crypto.randomBytes(16).toString('hex'), LINE_CHANNEL_ACCESS_TOKEN: 'test-channel-access-token', MINIMAX_TEST_URL: line.url, FX_TEST_URL: `${line.url}/fx`, SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtp.port), SMTP_FROM_EMAIL: 'noreply@example.com', SMTP_ALLOW_INSECURE: '1', LOG_LEVEL: 'silent',
   });
   const { pool, query } = await import('../src/config/db.js');
   const { migrate, seed } = await import('../src/utils/migrator.js');
