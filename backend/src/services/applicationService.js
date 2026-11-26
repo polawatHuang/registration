@@ -268,6 +268,13 @@ export async function exportRows(filter, { adminId, ip }) {
 }
 export async function dashboard(permissions) {
   const d = await repo.dashboard();
-  const extra = { attendance: { total: await countAttended(), daily: await dailyCheckins() }, certificates: await countValid(), notifications: await notificationDaily(), ai: permissions.includes('ai.manage') ? await aiSummary() : null };
+  // ส่วนเสริมพังได้โดยไม่ทำให้ตัวเลขหลักหาย (เช่น ยังไม่ได้รัน db:migrate หลังอัปเดต)
+  const part = async (name, fn, fallback = null) => { try { return await fn(); } catch (err) { logger.error({ err: { message: err.message, code: err.code }, part: name }, 'dashboard part failed'); return fallback; } };
+  const extra = {
+    attendance: await part('attendance', async () => ({ total: await countAttended(), daily: await dailyCheckins() }), { total: 0, daily: [] }),
+    certificates: await part('certificates', countValid, 0),
+    notifications: await part('notifications', notificationDaily, []),
+    ai: permissions.includes('ai.manage') ? await part('ai', aiSummary) : null,
+  };
   return { ...d, ...extra, statuses: d.statuses.map((s) => ({ ...s, label: STATUS_LABELS[s.status] })), total: d.statuses.reduce((t, s) => t + s.n, 0) };
 }

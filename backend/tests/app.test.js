@@ -1296,6 +1296,16 @@ describe('ความทนทานเมื่อใช้พร้อมก�
 });
 
 describe('ระบบ', () => {
+  test('ภาพรวมยังแสดงตัวเลขหลักได้ แม้ส่วนเสริมพัง (เช่น อัปเดตโค้ดแล้วยังไม่ได้ migrate)', async () => {
+    const admin = await s.adminClient();
+    await s.query('ALTER TABLE ai_interactions RENAME COLUMN cost TO cost_x');
+    try {
+      const r = await admin.get(`${A}/dashboard`);
+      assert.equal(r.status, 200, JSON.stringify(r.body));
+      assert.equal(r.body.data.ai, null);
+      assert.equal(typeof r.body.data.total, 'number');
+    } finally { await s.query('ALTER TABLE ai_interactions RENAME COLUMN cost_x TO cost'); }
+  });
   test('ไฟล์นอก frontend เข้าไม่ถึง, security headers, งานตั้งเวลาใช้ secret', async () => {
     const c = new Client(s.base);
     for (const p of ['/.env', '/package.json', '/backend/server.js', '/app.cjs', '/..%2fpackage.json', '/storage/', '/.git/config']) assert.ok([403, 404].includes((await c.get(p)).status), p);
