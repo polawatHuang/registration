@@ -50,10 +50,16 @@ export const retireDocument = (id, conn) => query('UPDATE application_documents 
 export const reviewDocument = (d, conn) => query(`UPDATE application_documents SET review_status = :decision, review_reason = :reason, reviewed_by = :adminId, reviewed_at = UTC_TIMESTAMP()
   WHERE id = :id`, d, conn);
 
-function buildFilter({ q, status, sessionId, universityId, nationalIdHash }) {
+const STATUSES = ['submitted', 'under_review', 'documents_incomplete', 'documents_approved', 'approved', 'awaiting_training', 'attended', 'passed', 'certified', 'rejected', 'cancelled'];
+function buildFilter({ q, status, sessionId, universityId, nationalIdHash, when, line }) {
   const w = [];
-  const p = { status, sessionId, universityId, nationalIdHash };
-  if (status) w.push('a.status = :status');
+  const p = { sessionId, universityId, nationalIdHash };
+  // หลายสถานะคั่นด้วยจุลภาค (มาจากการ์ดหน้าภาพรวม) รับเฉพาะชื่อสถานะที่มีจริง
+  const list = status ? [...new Set(String(status).split(',').map((x) => x.trim()))].filter((x) => STATUSES.includes(x)) : [];
+  if (status && !list.length) w.push('1 = 0');
+  if (list.length) { list.forEach((x, i) => { p[`st${i}`] = x; }); w.push(`a.status IN (${list.map((_, i) => `:st${i}`).join(', ')})`); }
+  if (when === 'today') w.push('DATE(DATE_ADD(a.submitted_at, INTERVAL 7 HOUR)) = DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 HOUR))');
+  if (line === 'linked') w.push("EXISTS (SELECT 1 FROM line_account_links k WHERE k.applicant_id = a.applicant_id AND k.status = 'active')");
   if (sessionId) w.push('a.session_id = :sessionId');
   if (universityId) w.push('s.university_id = :universityId');
   if (q) {

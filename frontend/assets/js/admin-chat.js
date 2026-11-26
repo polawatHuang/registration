@@ -2,6 +2,7 @@ import { get, send } from './api.js';
 import { API_BASE } from './config.js';
 import { $, confirmDialog, fmtDate, fmtTime, h, icon, num, reduced, toast } from './ui.js';
 import { badge, can, empty, failed, initAdmin, skeleton } from './admin.js';
+import { money, setFx } from './ai-report.js';
 
 const main = await initAdmin('chat');
 main.classList.add('chat-page');
@@ -18,7 +19,7 @@ const when = (v) => (dayKey(v) === dayKey(Date.now()) ? fmtTime(v) : fmtDate(v).
 const orb = h('span', { class: 'orb', 'aria-hidden': 'true' }, icon('robot'));
 const aiSwitch = h('input', { type: 'checkbox', role: 'switch', id: 'aiGlobal', disabled: true, onchange: () => setGlobal(aiSwitch.checked) });
 const aiText = h('small', {});
-const quota = h('div', { class: 'quota' });
+const quota = h('a', { class: 'quota', href: '/admin/ai-knowledge.html#credit', title: 'ดูและอัปเดตเครดิต AI' });
 const bar = h('section', { class: 'aibar' }, orb, h('div', { class: 'aitxt' }, h('strong', {}, 'AI Chat Bot'), aiText), quota,
   h('button', { class: 'icon-btn', type: 'button', id: 'snd', title: 'เสียงแจ้งเตือน', 'aria-label': 'เปิด/ปิดเสียงแจ้งเตือน', onclick: () => { S.sound = !S.sound; localStorageSet('lst-chat-sound', S.sound ? '1' : '0'); paintSound(); if (S.sound) chime(); } }),
   h('label', { class: 'sw', htmlFor: 'aiGlobal' }, aiSwitch, h('i', {}), h('span', { class: 'sr' }, 'เปิดหรือปิด AI Chat Bot ทั้งระบบ')));
@@ -34,10 +35,13 @@ async function setGlobal(on) {
   if (!(await confirmDialog({ title: on ? 'เปิด AI ตอบอัตโนมัติ?' : 'ปิด AI ทั้งระบบ?', text: on ? 'AI จะตอบทุกแชตที่ไม่ได้ปิดไว้เป็นรายคน โดยใช้เฉพาะคลังความรู้ที่เผยแพร่และตารางอบรมจริง' : 'ข้อความใหม่ทุกแชตจะรอเจ้าหน้าที่ตอบ', confirm: on ? 'เปิด AI' : 'ปิด AI', danger: !on }))) return;
   try { S.state = await send('PUT', '/admin/chat/ai', { enabled: on }); paintAi(S.state.aiEnabled); toast(on ? 'เปิด AI แล้ว' : 'ปิด AI แล้ว'); } catch (e) { toast(e.message, 'error'); }
 }
+/** แสดงเครดิต AI ที่เหลือ (โควตาข้อความ LINE ดูได้ที่หน้าแจ้งเตือน) */
 function paintQuota() {
-  const q = S.state?.quota;
-  quota.replaceChildren(...(q ? [h('span', {}, q.limited ? `โควตา ${num(q.remaining)}/${num(q.limit)}` : `ส่งแล้ว ${num(q.used)}`)] : []));
-  quota.classList.toggle('low', Boolean(q?.limited && q.remaining < q.limit * 0.1));
+  const c = S.state?.aiCredit;
+  if (!c) { quota.replaceChildren(); return; }
+  setFx(c.rate ? { rate: c.rate } : null);
+  quota.replaceChildren(h('span', {}, icon('lightning-charge-fill'), c.remaining === null ? ' ตั้งยอดเครดิต AI' : ` เครดิต AI เหลือ ${money(c.remaining, c.currency)}`));
+  quota.classList.toggle('low', ['low', 'critical', 'empty'].includes(c.level));
 }
 
 // ---------- รายการแชต ----------

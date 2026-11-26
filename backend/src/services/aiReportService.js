@@ -28,6 +28,8 @@ export async function prices() {
   const ref = REFERENCE_PRICES[(await currentModel())?.name];
   return ref ? { in: ref[0], out: ref[1], currency: 'USD', source: 'reference' } : { in: null, out: null, currency: s.currency, source: null };
 }
+/** อัตราแปลง USD → บาท ที่ผู้ดูแลตั้ง (หรือได้จากการเติมเงินล่าสุด) */
+export async function fx() { const v = (await getSettings(['ai_fx_rate'])).ai_fx_rate; return { rate: v ? Number(v) : null, currency: 'THB' }; }
 export const aiEnabledNow = async () => (await getSettings(['ai_chat_enabled'])).ai_chat_enabled === '1';
 export async function overBudget() {
   const { monthlyTokens } = await aiSettings();
@@ -62,7 +64,7 @@ const cost = (_s, r) => (r.cost === null ? null : Number(r.cost));
 export async function report(days = 30) {
   const [settings, month, daily, modes, open, all] = [await aiSettings(), await repo.monthSums(), await repo.daily(days), await repo.modes(days), await repo.recent({ days, unanswered: true, limit: 1000 }), await repo.recent({ days, line: true, limit: 1500 })];
   return {
-    settings, model: await currentModel(), price: await prices(), month: { tokens: Number(month.total), cost: cost(settings, month), interactions: Number(month.n), conversations: Number(month.conversations), avgMs: Math.round(Number(month.avg_ms)) },
+    settings, model: await currentModel(), price: await prices(), fx: await fx(), month: { tokens: Number(month.total), cost: cost(settings, month), interactions: Number(month.n), conversations: Number(month.conversations), avgMs: Math.round(Number(month.avg_ms)) },
     daily: daily.map((d) => ({ day: d.day, n: Number(d.n), tokens: Number(d.tokens), cost: cost(settings, d), unanswered: Number(d.unanswered) })), modes: Object.fromEntries(modes.map((m) => [m.mode, Number(m.n)])),
     unanswered: group(open, 100), frequent: group(all, 10),
   };
@@ -71,4 +73,4 @@ export const history = async () => (await repo.recent({ days: 30, limit: 200 }))
 export async function resolve(ids, { adminId, ip }) {
   await withTransaction(async (conn) => { const n = await repo.resolve(ids, adminId, conn); await insertAudit({ adminId, action: 'ai.resolve', entityType: 'ai', ip, metadata: { n } }, conn); });
 }
-export async function summary() { const [settings, m, d, all] = [await aiSettings(), await repo.monthSums(), await repo.daily(14), await repo.recent({ days: 30, line: true, limit: 1000 })]; return { conversations: Number(m.conversations), tokens: Number(m.total), cost: cost(settings, m), currency: (await prices()).currency, daily: d.map((x) => ({ day: x.day, n: Number(x.n), tokens: Number(x.tokens), cost: cost(settings, x) })), frequent: group(all, 6).map(({ question, count }) => ({ question, count })) }; }
+export async function summary() { const [settings, m, d, all] = [await aiSettings(), await repo.monthSums(), await repo.daily(14), await repo.recent({ days: 30, line: true, limit: 1000 })]; return { conversations: Number(m.conversations), tokens: Number(m.total), cost: cost(settings, m), currency: (await prices()).currency, fx: await fx(), daily: d.map((x) => ({ day: x.day, n: Number(x.n), tokens: Number(x.tokens), cost: cost(settings, x) })), frequent: group(all, 6).map(({ question, count }) => ({ question, count })) }; }

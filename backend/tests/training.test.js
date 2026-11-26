@@ -700,6 +700,31 @@ describe('เครดิต AI', () => {
     c = await get();
     assert.ok(c.remaining <= 50 && c.entries[0].kind === 'balance');
     assert.equal(c.total, 50, 'ตั้งยอดจริงแล้วเริ่มนับใหม่');
+    assert.ok(Math.abs(c.entries[0].estimate - 100) < 1e-6, 'เก็บยอดที่ระบบประมาณไว้เทียบกับยอดจริง');
+  });
+
+  test('ค่าเงินบาท: อัตราจากการเติมจริง, ตั้งเองได้, สรุปค่าใช้จ่ายรายเดือน และแถบหน้าแชตแสดงเครดิต AI', async () => {
+    const get = async () => (await admin.get('/api/v1/ai/credit')).body.data;
+    const opts = (o) => admin.put('/api/v1/ai/credit/options', { lowPct: 20, email: '', ...o });
+    assert.equal((await opts({ fxRate: 0 })).status, 400);
+    assert.equal((await opts({ fxRate: '' })).status, 200);
+    assert.equal((await get()).fx.rate, null);
+    const before = (await get()).spending.topups;
+    let c = (await admin.post('/api/v1/ai/credit', { kind: 'topup', amount: 10, paidThb: 345.6 })).body.data;
+    assert.equal(c.fx.rate, 34.56, 'อัตรา = บาทที่จ่าย / ดอลลาร์ที่เติม');
+    assert.equal(c.entries[0].paid_thb, 345.6);
+    assert.ok(Math.abs(c.spending.topups.usd - before.usd - 10) < 1e-6);
+    assert.equal(c.spending.months.length, 6);
+    assert.ok(c.spending.months[0].topupUsd >= 10);
+    assert.equal((await opts({ fxRate: 35 })).body.data.fx.rate, 35);
+    assert.equal((await opts({})).body.data.fx.rate, 35, 'ไม่ส่งอัตรามา = คงค่าเดิม');
+    assert.equal((await admin.post('/api/v1/ai/credit', { kind: 'balance', amount: 5, paidThb: 999 })).status, 200);
+    assert.equal((await get()).entries[0].paid_thb, null, 'ยอดคงเหลือไม่มีเงินที่จ่าย');
+    assert.equal((await admin.get('/api/v1/ai/report')).body.data.fx.rate, 35);
+    assert.equal((await admin.get(`${A}/dashboard`)).body.data.ai.fx.rate, 35);
+    const chat = (await admin.get(`${A}/chat/state`)).body.data;
+    assert.equal(chat.aiCredit.rate, 35);
+    assert.ok(chat.aiCredit.remaining <= 5);
   });
 });
 

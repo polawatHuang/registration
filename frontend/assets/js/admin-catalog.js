@@ -4,7 +4,7 @@ import { empty, failed, formDialog, initAdmin, skeleton } from './admin.js';
 
 const main = await initAdmin('catalog');
 const ST = { draft: ['', 'ฉบับร่าง'], open: ['ok', 'เปิดรับสมัคร'], closed: ['warn', 'ปิดรับ'], completed: ['info', 'จบแล้ว'], cancelled: ['bad', 'ยกเลิก'] };
-let data; let tab = 'universities';
+let data; let tab = ['sessions', 'courses', 'options'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'universities';
 /** datetime-local เป็นเวลาไทยเสมอ ไม่ขึ้นกับเครื่องผู้ใช้ */
 const toLocal = (v) => (v ? new Date(new Date(v).getTime() + 7 * 3_600_000).toISOString().slice(0, 16) : '');
 const toIso = (v) => (v ? new Date(`${v}:00+07:00`).toISOString() : null);

@@ -271,6 +271,17 @@ describe('ความปลอดภัยฝั่งเจ้าหน้า�
     assert.equal(x.buffer.subarray(0, 2).toString(), 'PK');
     const dash = (await admin.get(`${A}/dashboard`)).body.data;
     assert.ok(dash.total > 0 && dash.today > 0 && dash.daily.length > 0);
+    // การ์ดหน้าภาพรวมลิงก์ไปรายการที่ตัวเลขตรงกัน
+    const total = async (qs) => (await admin.get(`${A}/applications?${qs}`)).body.meta.total;
+    const n = (...st) => dash.statuses.filter((x) => st.includes(x.status)).reduce((t, x) => t + x.n, 0);
+    assert.equal(await total('when=today'), dash.today);
+    assert.equal(await total('status=submitted,under_review'), n('submitted', 'under_review'));
+    assert.equal(await total('status=approved,awaiting_training,attended,passed,certified'), n('approved', 'awaiting_training', 'attended', 'passed', 'certified'));
+    assert.equal(await total('status=nope'), 0, 'สถานะที่ไม่มีจริงไม่คืนทุกใบ');
+    assert.equal(await total(`status=${encodeURIComponent("submitted') OR 1=1 --")}`), 0);
+    assert.equal((await admin.get(`${A}/applications?when=yesterday`)).status, 400);
+    const linked = (await s.query("SELECT COUNT(*) n FROM applications a WHERE EXISTS (SELECT 1 FROM line_account_links k WHERE k.applicant_id = a.applicant_id AND k.status = 'active')"))[0].n;
+    assert.equal(await total('line=linked'), linked);
   });
   test('ตัวเลือกฟอร์มข้อ 1, 2, 11: เพิ่ม ปิด ลบ มีผลกับฟอร์มทันที และลบรายการที่ใช้อยู่ไม่ได้', async () => {
     const admin = await s.adminClient();

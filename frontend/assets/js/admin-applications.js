@@ -6,15 +6,25 @@ import { badge, can, empty, failed, initAdmin, pager, skeleton, STATUS } from '.
 
 const main = await initAdmin('applications');
 const init = new URLSearchParams(location.search);
-const f = { q: '', status: STATUS[init.get('status')] ? init.get('status') : '', page: 1 };
+// ตัวกรองที่มาจากการ์ดหน้าภาพรวม: หลายสถานะ, สมัครวันนี้, ผูก LINE แล้ว
+const VIEWS = { pending: ['submitted,under_review', 'รอตรวจเอกสาร'], approved: ['approved,awaiting_training,attended,passed,certified', 'อนุมัติแล้ว (รวมขั้นถัดไป)'] };
+const group = (init.get('status') ?? '').split(',').filter((x) => STATUS[x]);
+const f = { q: '', status: group.length === 1 ? group[0] : '', group: group.length > 1 ? group.join(',') : '', when: init.get('when') === 'today' ? 'today' : '', line: init.get('line') === 'linked' ? 'linked' : '', page: 1 };
+const chipText = () => [f.group && (Object.values(VIEWS).find(([v]) => v === f.group)?.[1] ?? 'หลายสถานะ'), f.when && 'สมัครวันนี้', f.line && 'ผูก LINE กับบุคคลแล้ว'].filter(Boolean).join(' · ');
 const list = h('div', { class: 'list' });
 const foot = h('div', {});
-const qs = () => new URLSearchParams(Object.entries({ q: f.q, status: f.status, page: f.page }).filter(([, v]) => v !== ''));
+const qs = () => new URLSearchParams(Object.entries({ q: f.q, status: f.status || f.group, when: f.when, line: f.line, page: f.page }).filter(([, v]) => v !== ''));
 let timer; let seq = 0; let items = [];
 const search = h('input', { class: 'input', type: 'search', placeholder: 'ชื่อ เลขที่ใบสมัคร มือถือ อีเมล ร้าน หรือเลขบัตร', 'aria-label': 'ค้นหาผู้สมัคร', oninput: () => { clearTimeout(timer); timer = setTimeout(() => { f.q = search.value.trim(); f.page = 1; load(); }, 280); } });
-const status = h('select', { class: 'input', 'aria-label': 'กรองสถานะ', onchange: () => { f.status = status.value; f.page = 1; load(); } }, h('option', { value: '' }, 'ทุกสถานะ'), Object.entries(STATUS).map(([k, v]) => h('option', { value: k, selected: k === f.status }, v[1])));
+const status = h('select', { class: 'input', 'aria-label': 'กรองสถานะ', onchange: () => { f.status = status.value; f.group = ''; f.page = 1; paintChip(); load(); } }, h('option', { value: '' }, 'ทุกสถานะ'), Object.entries(STATUS).map(([k, v]) => h('option', { value: k, selected: k === f.status }, v[1])));
 const exportBtn = can('applicants.export') && h('button', { class: 'btn btn-purple', type: 'button', onclick: () => { const p = qs(); p.delete('page'); location.href = `${API_BASE}/admin/applications/export?${p}`; } }, icon('file-earmark-excel-fill'), 'ส่งออก Excel');
-main.replaceChildren(h('section', { class: 'box' }, h('div', { class: 'filters' }, search, status, exportBtn), list, foot));
+const chip = h('div', { class: 'fchip-row' });
+function paintChip() {
+  const t = chipText();
+  chip.replaceChildren(...(t ? [h('span', { class: 'fchip' }, icon('funnel-fill'), ` ${t} `, h('button', { type: 'button', 'aria-label': 'ล้างตัวกรอง', onclick: () => { f.group = ''; f.when = ''; f.line = ''; f.page = 1; history.replaceState(null, '', location.pathname); paintChip(); load(); } }, icon('x-lg')))] : []));
+}
+paintChip();
+main.replaceChildren(h('section', { class: 'box' }, h('div', { class: 'filters' }, search, status, exportBtn), chip, list, foot));
 
 async function load(quiet = false) {
   const my = ++seq;
@@ -23,7 +33,7 @@ async function load(quiet = false) {
     const { data, meta } = await api(`/admin/applications?${qs()}`);
     if (my !== seq) return;
     items = data;
-    list.replaceChildren(...(data.length ? data.map((a) => h('button', { class: 'lrow cols', type: 'button', onclick: () => open(a.id) }, h('span', { class: 'n' }, a.fullName, a.hasLine && h('i', { class: 'bi bi-line', title: 'มี LINE', style: { color: '#05a848', 'margin-left': '8px' } })), h('span', { class: 'm' }, `${a.applicationNo} · ${a.sessionName} · ${fmtDateTime(a.submittedAt)}`), badge(a.status))) : [empty('inbox', f.q || f.status ? 'ไม่พบผู้สมัครตามเงื่อนไข' : 'ยังไม่มีผู้สมัคร')]));
+    list.replaceChildren(...(data.length ? data.map((a) => h('button', { class: 'lrow cols', type: 'button', onclick: () => open(a.id) }, h('span', { class: 'n' }, a.fullName, a.hasLine && h('i', { class: 'bi bi-line', title: 'มี LINE', style: { color: '#05a848', 'margin-left': '8px' } })), h('span', { class: 'm' }, `${a.applicationNo} · ${a.sessionName} · ${fmtDateTime(a.submittedAt)}`), badge(a.status))) : [empty('inbox', f.q || f.status || chipText() ? 'ไม่พบผู้สมัครตามเงื่อนไข' : 'ยังไม่มีผู้สมัคร')]));
     foot.replaceChildren(...(data.length ? [pager(meta, (p) => { f.page = p; load(); })] : []));
   } catch (e) { if (my === seq) list.replaceChildren(failed(e, () => load())); }
 }
